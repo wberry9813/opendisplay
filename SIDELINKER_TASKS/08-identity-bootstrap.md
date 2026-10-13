@@ -1,6 +1,6 @@
 # Task 08 — SideLinker Direct Fork Identity Bootstrap
 
-Status: **IMPLEMENTED / STATIC REVIEW PENDING / RUNTIME NOT YET CLAIMED**  
+Status: **IMPLEMENTED / STATIC SELF-CHECK PASS / INDEPENDENT REVIEW PENDING / RUNTIME NOT YET CLAIMED**  
 Risk: **GUARDED**  
 Branch: `sidelinker/task08-identity-bootstrap`  
 Starting upstream/fork checkpoint: `b9eec1f232fb5ea571c87e8392379a84f47b237f`
@@ -97,3 +97,13 @@ Required before runtime PASS:
 After static review, extract a headless Direct engine controller while preserving `MacSender`, `VirtualDisplay`, `Usbmux`, `StreamReceiver` and the existing media protocol.
 
 Final product IPC, distribution packaging, signing/notarization and GPL source-offer mechanics remain later guarded decisions.
+
+
+## Static self-check repair
+
+After the first GitHub checkpoint, source inspection caught and repaired two configuration issues before runtime work:
+
+- removed an accidentally duplicated `configs:` block from the Mac sender and placed the iOS Debug bundle override under the iOS target;
+- added the documented `SIDELINKER_FORK_PUBLISH_ENABLED == true` guard to the manual Pages deploy job.
+
+No runtime/build PASS is inferred from this static repair.

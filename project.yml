@@ -73,10 +73,6 @@ targets:
         CODE_SIGN_ENTITLEMENTS: Mac/OpenSidecarMac.entitlements
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
       configs:
-        Debug:
-          PRODUCT_BUNDLE_IDENTIFIER: com.dmer.sidelinker.direct.receiver.debug
-          BUNDLE_DISPLAY_NAME: SideLinker Direct Dev
-      configs:
         # Local dev builds get their own identity: TCC keys permission
         # grants by bundle ID + code signature, so a Debug build sharing
         # the release bundle ID knocks out the release app's Screen
@@ -197,3 +193,7 @@ targets:
         BUNDLE_DISPLAY_NAME: SideLinker Direct
         TARGETED_DEVICE_FAMILY: "1,2"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+      configs:
+        Debug:
+          PRODUCT_BUNDLE_IDENTIFIER: com.dmer.sidelinker.direct.receiver.debug
+          BUNDLE_DISPLAY_NAME: SideLinker Direct Dev
