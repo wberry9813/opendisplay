@@ -1,6 +1,6 @@
 # SideLinker Direct Engine Runtime Architecture
 
-Status: **DESIGN READY / IMPLEMENTATION BLOCKED ON INDEPENDENT REVIEW GATE**  
+Status: **DESIGN ACCEPTED / IMPLEMENTATION READY**  
 Task: **09 — Headless Engine Controller**  
 Fork branch: `sidelinker/task09-headless-engine-controller`  
 Identity baseline: `595ce69a2feda8eafb7ba2c310fcca2c366baa3d`
@@ -542,10 +542,10 @@ The intended boundary is:
 
 Packaging/distribution/source-offer obligations still require explicit later review.
 
-## 16. Task 09 gate
+## 16. Task 09 implementation status
 
 Identity Bootstrap is complete at `595ce69a2feda8eafb7ba2c310fcca2c366baa3d`.
 
-Before substantive engine extraction begins, the existing independent architecture/license-boundary review gate must pass.
+The operator has accepted this runtime architecture as the current-stage design. No separate independent review is required for the design document before implementation.
 
-Until then, Task 09 is **design/documentation only**.
+Task 09 may proceed to source implementation. The resulting implementation checkpoint remains subject to independent code/architecture review before the task is declared complete.

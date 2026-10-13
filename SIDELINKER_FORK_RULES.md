@@ -169,7 +169,7 @@ This does not change the OpenDisplay sender/receiver media transport: engine <->
 
 Task 09 should reuse the existing SideLinker Direct Mac bundle/TCC identity in a headless launch mode instead of creating another identity.
 
-Substantive implementation remains blocked until the existing independent architecture/license-boundary review gate passes.
+Operator acceptance is sufficient to start Task 09 implementation. Independent review is required on the implemented checkpoint before Task 09 is declared complete.
 
 
 ## Connection ownership / anti-race rule

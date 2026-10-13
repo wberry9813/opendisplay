@@ -1,6 +1,6 @@
 # Task 09 — Headless Direct Engine Controller
 
-Status: **DESIGN READY / IMPLEMENTATION BLOCKED ON INDEPENDENT REVIEW**  
+Status: **DESIGN ACCEPTED / IMPLEMENTATION READY**  
 Risk: **GUARDED / IMMEDIATE**  
 Branch: `sidelinker/task09-headless-engine-controller`  
 Starting checkpoint: `595ce69a2feda8eafb7ba2c310fcca2c366baa3d`  
@@ -20,13 +20,13 @@ Task 09 should establish:
 - a headless engine launch mode;
 - continued standalone fork UI functionality for development.
 
-## Prerequisite gate
+## Design acceptance
 
-The SideLinker Task 07 independent architecture/license-boundary review is still required.
+The operator has accepted the current architecture for implementation.
 
-**No substantive Task 09 source implementation should begin until that review passes.**
+No separate independent review is required for this design/documentation checkpoint. Task 09 source implementation may begin from the accepted Identity Bootstrap baseline.
 
-Documentation/design work is allowed before that gate.
+Independent review is retained for the **implemented code checkpoint**, not as a precondition to start coding.
 
 ## Required architecture
 
@@ -66,7 +66,7 @@ The existing standalone development mode may retain upstream-style auto-connect 
 
 SideLinker product policy owns exclusive backend connection intent: Direct discovery may continue while Native is active, but no Direct session starts until SideLinker grants it.
 
-## Implementation sequence after review PASS
+## Implementation sequence
 
 ### Phase A — extract engine-owned receiver/session model
 
@@ -199,13 +199,16 @@ Runtime gate after source verification:
 
 No runtime PASS may be claimed from static/source evidence.
 
-## Independent review
+## Implementation checkpoint review
 
-Because this task creates the first real proprietary-to-GPL process-control seam, require one independent read-only review of:
+After implementation and writer verification, require one independent read-only review of the resulting code checkpoint.
+
+Review focus:
 
 - engine/product responsibility split;
 - local control protocol scope;
-- lifecycle cleanup;
+- discovery-vs-connection ownership behavior;
+- lifecycle cleanup and stopSession non-resurrection;
 - upstream-preservation evidence;
 - no GPL code movement into SideLinker-Source;
 - no media proxying through proprietary SideLinker.
@@ -214,7 +217,6 @@ Because this task creates the first real proprietary-to-GPL process-control seam
 
 Task 09 is complete only when:
 
-- the review gate has passed;
 - implementation is committed in the fork;
 - source/build verification passes;
 - required runtime baseline is recorded;
