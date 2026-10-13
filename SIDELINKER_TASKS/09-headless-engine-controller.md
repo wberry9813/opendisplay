@@ -1,9 +1,10 @@
 # Task 09 — Headless Direct Engine Controller
 
-Status: **DESIGN ACCEPTED / IMPLEMENTATION READY**  
+Status: **IMPLEMENTED / WRITER VERIFIED / INDEPENDENT REVIEW AND DEVICE RUNTIME PENDING**
 Risk: **GUARDED / IMMEDIATE**  
 Branch: `sidelinker/task09-headless-engine-controller`  
 Starting checkpoint: `595ce69a2feda8eafb7ba2c310fcca2c366baa3d`  
+Operator-authorized implementation head: `7f67f64e63cc5098dac114325e75986e2ca89b00` (accepted design/docs above the identity baseline)
 Architecture: `SIDELINKER_ENGINE_ARCHITECTURE.md`  
 Control contract: `SIDELINKER_ENGINE_CONTROL_PROTOCOL.md`
 
@@ -221,3 +222,77 @@ Task 09 is complete only when:
 - source/build verification passes;
 - required runtime baseline is recorded;
 - documentation reflects actual behavior rather than intended behavior.
+
+## Writer implementation checkpoint — 2026-10-13
+
+Writer: sole `ESCALATED_WRITER`, `openai/gpt-6.1-sol`, explicitly authorized for this architecture-sensitive seam. Scope: this GPL fork only; no proprietary repository files modified. No other implementation writer or reviewer was dispatched. Current quota remains unknown; the parent's partial Oct12 snapshot was not treated as current quota. The proprietary quota-update script was deliberately not invoked because it writes the prohibited repository.
+
+### Implemented behavior
+
+- `Mac/Engine/DirectEngineController.swift` owns the extracted upstream Bonjour/usbmux discovery, identity correlation, session registry, sender construction and orchestration. Standalone presentation policy is a small `SenderController` adaptor in `Mac/OpenSidecarMacApp.swift`; the existing views/permission UI are relocated to `Mac/StandaloneSenderUI.swift` without executable-view changes (comment/whitespace-normalized comparison).
+- Managed discovery remains active but passive without an explicit grant. One idempotent managed session is authorized by `startSession`; a different receiver/preference returns `session.busy`. `stopSession` revokes authority before sender teardown, cancels owned startup tasks and clears permitted targets. Registry identity checks reject delayed sender callbacks; generation checks make delayed replacement/recovery work inert after revocation, including after a new grant.
+- The existing sender retains its intra-session reconnect/capture recovery. The controller can replace an ended/sleeping pipeline under the same managed grant, matching the original receiver identity or a learned install identity. `auto` permits USB preference/failover; `usb` forbids Wi-Fi failover; `wifi` forbids USB upgrade and constrains the sender's TCP/UDP connection parameters to Wi-Fi and disables internal cable-upgrade probing. These transport paths still need real-device verification.
+- Receiver snapshots combine already-correlated rows by install identity, expose available transports, known device/protocol compatibility and panel/codec metadata after hello, and do not expose transient usbmux `DeviceID` as product identity. Strong conflicting install IDs do not merge solely by name; upstream name correlation remains a fallback when stronger evidence is absent. Older receivers without install evidence retain transport-scoped identity limitations; no new identity migration machinery was added.
+- `--engine` uses the existing sender target/bundle identity, suppresses menu-bar/control-window presentation and runs the same extracted controller plus `LocalControlServer`. Standalone retains independent multiple sessions and its existing development auto-connect policy. No new bundle, entitlement, signing or release infrastructure was introduced.
+- Local control is AF_UNIX at `~/Library/Application Support/SideLinker/Direct/engine.sock`, not TCP. Owner-checked directories, owner-private `0700` containing directory / `0600` socket, `O_NOFOLLOW` lock checks, exclusive `flock`, safe owned stale-socket replacement, inode-checked cleanup and same-user `getpeereid` checks protect ownership. A second controlling client is rejected; no takeover. Handshake deadline is 5 seconds; pending output is bounded to 1 MiB and a 10-second stalled-write deadline. Owner loss/shutdown revokes the grant immediately, drains responses for at most 0.2 seconds, cleans descriptors/socket and requests exit, with a 1-second process-exit backstop. These are implementation bounds, not active-display runtime timing claims.
+- Protocol v1 implements 4-byte BE framing, UTF-8 object validation, 262144-byte maximum, hello-first, all six required methods and all five required event families. Unsupported methods return `protocol.unknownMethod`; competing owners return `control.ownerExists`. Subscription is subscribe-to-all. Permission preflight uses `granted` or `unknown` because false preflight does not distinguish denied from not-yet-determined; no managed permission-request UI is invoked. Media never traverses this IPC.
+
+### Frozen-media evidence
+
+`tools/task09-source-checks.py` verifies 48 frozen tracked media/receiver/identity/distribution/accepted-contract paths byte-identical to the operator-authorized head. All production target configuration in `project.yml` is unchanged; only the hostless Mac test target's source inputs/dependency were widened to compile the real engine orchestration. Generated Info.plists are untracked, so identity preservation is checked against their authoritative project configuration, not falsely against missing Git objects.
+
+`Mac/MacSender.swift` has exactly seven allowlisted integration substitutions: immutable `wifiOnly` storage, defaulted initializer option/assignment, a cancellation/terminal-stop guard at startup, cable-probe guard, and Wi-Fi interface constraints on TCP/UDP parameters. No virtual-display, capture, codec, framing, rotation, keyframe or receiver algorithm was rewritten. The delayed-start guard is tested by stopping a sender and attempting `start()` without dialing. All other frozen areas, `Shared/`, iOS and workflows remain unchanged.
+
+### Actual verification and artifacts
+
+Artifact root: `/Volumes/SSD240/Dev/SideLinker-artifacts/task09-writer/`.
+
+1. **Project generation executed:** `./generate.sh` — succeeded. XcodeGen picked up the additive engine/UI/test files. No generated project or plist is committed.
+2. **Executed unsigned arm64 Debug tests:**
+
+   ```sh
+   xcodebuild -project OpenSidecar.xcodeproj -scheme OpenSidecarMac \
+     -configuration Debug -destination 'platform=macOS,arch=arm64' \
+     -derivedDataPath /Volumes/SSD240/Dev/SideLinker-artifacts/task09-writer/DerivedData \
+     -resultBundlePath /Volumes/SSD240/Dev/SideLinker-artifacts/task09-writer/Tests-checkpoint.xcresult \
+     CODE_SIGNING_ALLOWED=NO test
+   ```
+
+   `tests-checkpoint.log`: **TEST SUCCEEDED**. Existing **114 XCTest tests**, zero failures; **19 Swift Testing tests in three suites**, including parameterized framing/parser cases, passed. Synthetic controller tests inject a no-op sender-start operation and permission predicate: no receiver dial, display creation, capture or hardware streaming is established by them. They exercise passive USB inventory and empty Bonjour refresh paths, explicit/idempotent grants, busy/preference rejection, denied permission, unrelated-target rejection, stale sleep/hello/disconnect callbacks, same-grant sleep/disconnect replacement, delayed recovery revocation, terminal sender start rejection and standalone multi-session cardinality. Pure snapshot tests cover install-ID merge vs conflicting/name-only evidence. Nonempty real Bonjour/USB correlation and real transport migration remain runtime pending.
+
+   Real local Unix socket tests also execute hello-first / unknown-method / second-owner behavior, private modes, duplicate engine lock rejection, stale owned-socket recovery, symlink preservation and socket cleanup. Same-user peer checks are exercised by normal client acceptance; a different-user process was not launched.
+3. **Executed sender/headless-mode build:**
+
+   ```sh
+   xcodebuild -project OpenSidecar.xcodeproj -scheme OpenSidecarMac \
+     -configuration Debug -destination 'platform=macOS,arch=arm64' \
+     -derivedDataPath /Volumes/SSD240/Dev/SideLinker-artifacts/task09-writer/DerivedData \
+     CODE_SIGNING_ALLOWED=NO build
+   ```
+
+   `build-checkpoint.log`: **BUILD SUCCEEDED**. Standalone UI and headless runtime branch compile in this same target; no separate identity/target is needed. App artifact: `DerivedData/Build/Products/Debug/SideLinker Direct Dev.app`. Existing upstream Swift-6 concurrency warnings in the Swift-5.9 media/usbmux code remain; no blanket suppression or concurrency migration was attempted.
+4. **Executed source/boundary checks:** `python3 tools/task09-source-checks.py` — `source-checks-repaired.log` records frozen-byte comparisons, exact sender allowlist, unchanged production identity/distribution configuration, relocated-view equivalence, UI-independent controller/headless/AF_UNIX wiring and `git diff --check` PASS. Final documentation-inclusive check: `source-checks-checkpoint.log`. These are source checks, not device/runtime proofs.
+5. **Executed real Mac, unsigned control-only smoke:**
+
+   ```sh
+   python3 tools/task09-control-smoke.py "/Volumes/SSD240/Dev/SideLinker-artifacts/task09-writer/DerivedData/Build/Products/Debug/SideLinker Direct Dev.app/Contents/MacOS/SideLinker Direct Dev"
+   ```
+
+   `control-smoke-checkpoint.log` records successful `--engine` launch, fragmented request delivery, hello-first/hello, subscribe/list snapshots, unsupported-method error, second-owner rejection, idempotent stop/shutdown, `0700`/`0600` modes and socket cleanup. A second launch's owner EOF exited/cleaned the socket in **0.452 seconds** with **no active display session**. Final rerun `control-smoke-events.log` additionally asserts all five event families and that observed session snapshots stay idle without a grant; owner EOF cleanup took **0.476 seconds**. The smoke never calls `startSession`, requests TCC grants or interacts with permission dialogs. It does not prove populated receiver snapshots, signed launch, no-window visual acceptance, active display cleanup, streaming, input or hardware behavior.
+
+Unix socket unit fixtures use short `/tmp/task09-<random>/Direct/engine.sock` paths and remove them at teardown: this is a technical exception to SSD artifact preference because Darwin `sockaddr_un.sun_path` is 104 bytes and XCTest temporary-directory paths can exceed that limit. Build/test reports remain on SSD.
+
+### Failures retained and repaired
+
+- The initial build hit the 200-second tool timeout during its first dependency/build invocation (`build.log`, BUILD INTERRUPTED); the longer retry built successfully (`build-retry.log`). No foundation capability was downgraded from a task timeout.
+- Expanded server tests failed on existing-directory handling (`tests-final.log` / `tests-verified.log`); the first control smoke completed shutdown checks but failed relaunch for the same defect (`control-smoke.log`). Startup now validates/reuses the existing private directory before lock/stale-socket checks. All affected tests subsequently passed (`Tests-repaired.xcresult` and final `Tests-checkpoint.xcresult`).
+- A subsequent unsigned app smoke hit its 15-second socket-startup deadline without a new engine startup log (`control-smoke-repaired.log`); root cause was not established. The checkpoint smoke preserves stderr/stdout, allows a bounded 30-second startup, and both launches completed. This timeout is retained as an uncharacterized unsigned-startup observation, not a signed compatibility claim.
+- The first source-check harness incorrectly assumed generated Info.plists were tracked Git files (`source-checks.log`). The corrected harness checks unchanged production target configuration and passed; this was a verification-fixture error, not an identity change.
+
+### Gate state / next step
+
+- Writer source/build verification: **PASS at the evidence levels above**.
+- Independent implementation review: **PENDING**, GUARDED / IMMEDIATE; no independent review performed by this writer. Do not merge/cross the review boundary on this report alone.
+- Signed Debug/TCC, populated USB/Wi-Fi snapshots, real `startSession`/virtual display/stream, real stop/display teardown, active-session owner-loss cleanup, iPad USB/Wi-Fi media, Accessibility/input and network/update-endpoint runtime matrix: **PENDING**. Disabled distribution endpoints are source-preserved, not packet-capture-verified.
+- Operator Manual Acceptance: **PENDING**. Task09 is not complete/sealed/release-approved.
+- Next: one independent read-only checkpoint review, then stable signed Debug and real-device runtime/operator acceptance. No proprietary backend implementation is included.

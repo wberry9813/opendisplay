@@ -140,17 +140,17 @@ targets:
     deploymentTarget: "14.0"
     sources:
       - MacTests
-      - Mac/DisplayArrangement.swift
-      - Mac/StreamConfiguration.swift
-      - Mac/VirtualCanvasSizing.swift
-      - Mac/PhoneInfo.swift
-      - Mac/DesktopPolicy.swift
-      - Mac/Log.swift
-      - Mac/LogPolicies.swift
-      - Shared/Protocol.swift
-      - Shared/DirectCable.swift
-      - Shared/LogSnapshot.swift
+      - path: Mac
+        excludes:
+          - OpenSidecarMacApp.swift
+          - StandaloneSenderUI.swift
+          - Assets.xcassets
+          - Info.plist
+          - OpenSidecarMac.entitlements
+      - Shared
       - MacReceiver/FullscreenPreference.swift
+    dependencies:
+      - package: Sparkle
     settings:
       base:
         # A hostless test bundle: the sources under test are compiled straight

@@ -82,6 +82,8 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate {
     private let endpointName: String
     private let mode: CaptureMode
     private let quality: StreamQuality
+    // Explicit managed Wi-Fi preference forbids autonomous cable migration.
+    private let wifiOnly: Bool
     // Stable per-device serial for the virtual display, so macOS can tell
     // multiple SideLinker Direct monitors apart and persist their arrangement.
     private let displaySerial: UInt32
@@ -350,11 +352,12 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate {
 
     init(transport: SenderTransport, name: String, mode: CaptureMode,
          quality: StreamQuality = .best, displaySerial: UInt32 = 0x0001,
-         identityOffset: UInt32 = 0, awaitingWake: Bool = false) {
+         identityOffset: UInt32 = 0, awaitingWake: Bool = false, wifiOnly: Bool = false) {
         self.transport = transport
         self.endpointName = name
         self.mode = mode
         self.quality = quality
+        self.wifiOnly = wifiOnly
         self.displaySerial = displaySerial
         self.baseIdentityOffset = identityOffset
         self.awaitingWake = awaitingWake
@@ -364,7 +367,9 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate {
     // MARK: - Lifecycle
 
     func start() async throws {
-        stopped = false
+        // Sender instances are single-use; a delayed start must never undo stop().
+        try Task.checkCancellation()
+        guard !stopped else { throw CancellationError() }
         queue.async { self.connect() }   // dial state lives on `queue`
         if !monitorsStarted {
             monitorsStarted = true
@@ -1597,6 +1602,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate {
     /// Arm the periodic probe. Cheap when there is nothing to find: with no
     /// advertised addresses, or on the USB transport, it never fires a dial.
     private func startUpgradeProbing() {
+        guard !wifiOnly else { return }
         lastLoggedCandidates = []
         upgradeTimer?.cancel()
         let timer = DispatchSource.makeTimerSource(queue: queue)
@@ -1796,6 +1802,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate {
         // pre-dial was tried and only ever hung until its timeout, adding 2s
         // to every connect. becomeReady reports which path won.
         let params = NWParameters(tls: nil, tcp: options)
+        if wifiOnly { params.requiredInterfaceType = .wifi }
         let conn = NWConnection(to: endpoint, using: params)
         connection = conn
         // A dial to a withdrawn Bonjour service (receiver asleep or app
@@ -2128,6 +2135,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate {
         }
         closeCursorChannel()
         let params = NWParameters.udp
+        if wifiOnly { params.requiredInterfaceType = .wifi }
         params.serviceClass = .responsiveData
         let udp = NWConnection(host: host, port: udpPort, using: params)
         cursorNetworkLock.lock()
