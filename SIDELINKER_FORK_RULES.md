@@ -153,3 +153,20 @@ For each fork-specific change ask:
 - Does it make future upstream sync materially harder?
 
 If a change crosses licensing/distribution or proprietary-linking boundaries, stop for an explicit architecture/license decision rather than guessing.
+
+
+## Task 09 runtime architecture decision
+
+The first SideLinker-facing engine seam is specified by:
+
+- `SIDELINKER_ENGINE_ARCHITECTURE.md`
+- `SIDELINKER_ENGINE_CONTROL_PROTOCOL.md`
+- `SIDELINKER_TASKS/09-headless-engine-controller.md`
+
+For Task 09, SideLinker <-> engine control uses a **local Unix domain socket** with a small versioned length-prefixed JSON protocol.
+
+This does not change the OpenDisplay sender/receiver media transport: engine <-> receiver remains the existing USB(usbmuxd)/Wi-Fi(TCP) path.
+
+Task 09 should reuse the existing SideLinker Direct Mac bundle/TCC identity in a headless launch mode instead of creating another identity.
+
+Substantive implementation remains blocked until the existing independent architecture/license-boundary review gate passes.
