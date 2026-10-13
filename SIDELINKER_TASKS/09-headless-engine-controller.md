@@ -1,10 +1,11 @@
 # Task 09 — Headless Direct Engine Controller
 
-Status: **IMPLEMENTED / WRITER VERIFIED / INDEPENDENT REVIEW AND DEVICE RUNTIME PENDING**
+Status: **COMPLETE / WRITER VERIFIED / INDEPENDENT REVIEW PASS_WITH_NONBLOCKING_FINDINGS / OPERATOR REAL-DEVICE RUNTIME ACCEPTED**
 Risk: **GUARDED / IMMEDIATE**  
 Branch: `sidelinker/task09-headless-engine-controller`  
 Starting checkpoint: `595ce69a2feda8eafb7ba2c310fcca2c366baa3d`  
 Operator-authorized implementation head: `7f67f64e63cc5098dac114325e75986e2ca89b00` (accepted design/docs above the identity baseline)
+Final reviewed/runtime checkpoint: `f121628168166bec744b69c4587f12d42697cf3d`
 Architecture: `SIDELINKER_ENGINE_ARCHITECTURE.md`  
 Control contract: `SIDELINKER_ENGINE_CONTROL_PROTOCOL.md`
 
@@ -334,3 +335,59 @@ Artifact root: `/Users/dmer/SideLinker-artifacts/task09-bonjour-fix/`. Build/Der
 6. `python3 tools/task09-source-checks.py` — `source-checks-bonjour-fix.log`: all PASS, including the ≤15-character RFC 6335/6763 name check, the three generated `NSBonjourServices` bindings, the zero-stale-token scan, and terminating `git diff --check` PASS.
 
 These remain source/build checks. Signed/TCC launch, populated USB/Wi-Fi snapshots, real `startSession`/stream/teardown, iPad USB/Wi-Fi media, Accessibility/input and the endpoint runtime matrix remain **PENDING**.
+
+
+## Independent implementation review — 2026-10-13
+
+Review checkpoint: `f121628168166bec744b69c4587f12d42697cf3d` against accepted implementation baseline `7f67f64e63cc5098dac114325e75986e2ca89b00`.
+
+Reviewer route: agy `gemini-3.8-flash-high`, independent from the implementation writer. Verdict: **PASS_WITH_NONBLOCKING_FINDINGS**.
+
+The reviewer found no blocking defect in the managed discovery/session authority split, stop/recovery generation guards, standalone compatibility, AF_UNIX control ownership/security/framing, headless launch identity, narrow `MacSender` integration, GPL/proprietary boundary, lifecycle/concurrency handling, or the corrected `_sldirect._tcp` Bonjour identity. Reviewer-reported reproduction included Task 09 source checks, the Mac test suite (114 XCTest + 20 Swift Testing tests, zero failures), and the control-only headless smoke.
+
+Two LOW/nonblocking residual findings were accepted without code churn:
+
+1. managed/headless display-size helpers still touch shared `UserDefaults.standard`; no observed runtime defect and no product-policy leakage was demonstrated;
+2. `LocalControlServer.acceptClients()` bounds one dispatch pass to 16 accepts rather than draining until `EAGAIN`; the product contract has one legitimate control owner and the bound is acceptable as an anti-starvation limit for this checkpoint.
+
+No second independent reviewer is required for Task 09.
+
+## Operator real-device runtime acceptance — 2026-10-13
+
+The operator executed the Debug sender/receiver on real Apple hardware and exercised both standalone and managed/headless paths. This is real-device runtime evidence, not static inference.
+
+Accepted runtime results:
+
+- standalone Direct receiver streaming over **USB: PASS**;
+- standalone Direct receiver streaming over **Wi-Fi: PASS**;
+- `--engine` launches headless and creates the private control socket without automatically creating a display from discovery alone: **PASS**;
+- control directory/socket modes observed as `0700` / `0600`: **PASS**;
+- USB receiver discovery in managed mode: **PASS**;
+- Wi-Fi receiver discovery in managed mode: **PASS**;
+- pre-hello USB identity upgraded from a transport-scoped `device:<udid>` identity to the receiver install identity after hello, and USB + Wi-Fi correlated into one receiver exposing both transports: **PASS**;
+- requesting an unavailable transport returned `transport.unavailable`: **PASS**;
+- explicit managed `startSession` over **USB** created the virtual display, completed receiver hello, selected HEVC, started ScreenCaptureKit capture and rendered on the receiver: **PASS**;
+- explicit managed `startSession` over **Wi-Fi** did the same over the Wi-Fi path: **PASS**;
+- `auto` selected USB while USB was available: **PASS**;
+- while one managed grant remained active, physical USB detach migrated the same authorized session to Wi-Fi without a new product-level `startSession`: **PASS**;
+- reattaching USB migrated that same authorized session back to USB: **PASS**;
+- explicit `stopSession` tore the display/session down and subsequent USB/Wi-Fi discovery changes did **not** resurrect it until a new `startSession`: **PASS**;
+- terminating the controlling client caused owner-EOF cleanup: the display/session stopped, the engine process exited, and `engine.sock` was removed: **PASS**;
+- Screen Recording permission was functional in the real stream path: **PASS**;
+- Accessibility/input return was exercised on real iPad hardware with finger touch and Apple Pencil input reaching macOS: **PASS**.
+
+The operator manually stopped ScreenCaptureKit during some exploratory runs; the resulting `SCStreamErrorDomain` user/system-stopped errors were therefore expected test actions, not spontaneous engine failures.
+
+### Runtime evidence limits retained
+
+- two-finger scrolling was not separately required as a Task 09 blocking acceptance item after real finger/Pencil injection proved the Accessibility/input-return path;
+- no separate packet-capture claim is made for update/version endpoints. Inherited OpenDisplay distribution endpoints remain disabled by the accepted source/config boundary; final distribution/update/network verification belongs to later packaging/release work;
+- final installer/helper placement and whether the engine app bundle is embedded or installed in Application Support remain explicitly deferred. Task 09 proves the separate-process engine boundary, not final packaging UX.
+
+## Final gate state
+
+- Writer implementation/source/build verification: **PASS** at the recorded evidence levels.
+- Independent implementation review: **PASS_WITH_NONBLOCKING_FINDINGS**.
+- Operator real-device runtime / Manual Acceptance for the Task 09 engine scope: **PASS**.
+- Final implementation/runtime checkpoint: `f121628168166bec744b69c4587f12d42697cf3d`.
+- Task 09 is **COMPLETE**. The next architecture phase is proprietary SideLinker `DirectDisplayBackend` integration and Native/Direct arbitration; no proprietary Direct backend implementation is included in this fork task.
