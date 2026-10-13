@@ -347,7 +347,7 @@ Discovery and connection intent are separate responsibilities.
 Both backend families may continue to observe the signals they need:
 
 - Native Sidecar may observe its existing USB/BLE/iCloud/product signals;
-- SideLinker Direct Engine may observe usbmuxd and `_sidelinkerdirect._tcp` Bonjour discovery.
+- SideLinker Direct Engine may observe usbmuxd and `_sldirect._tcp` Bonjour discovery.
 
 Those observations do **not** grant permission to start a display session.
 
@@ -509,7 +509,7 @@ Future multi-display product support can widen the control contract additively.
 ### Wi-Fi
 
 ```text
-Receiver advertises _sidelinkerdirect._tcp
+Receiver advertises _sldirect._tcp
         ↓
 Engine Bonjour discovery
         ↓

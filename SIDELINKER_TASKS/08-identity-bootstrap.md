@@ -29,7 +29,7 @@ This task changes identity/configuration/distribution safety only. It does not r
 - iOS/iPad receiver: `com.dmer.sidelinker.direct.receiver`
 - iOS/iPad receiver Debug: `com.dmer.sidelinker.direct.receiver.debug`
 - product naming: `SideLinker Direct` / `SideLinker Direct Receiver`
-- Bonjour: `_sidelinkerdirect._tcp`
+- Bonjour: `_sldirect._tcp`
 - virtual display vendor/product base: `0x534C` / `0x5344`
 - App Store deep-link ID: `6760007015`
 
@@ -50,7 +50,9 @@ The App Store ID is a link destination only. This task does not claim the GPL re
 
 ## Discovery behavior
 
-The fork intentionally stops advertising/browsing upstream `_opensidecar._tcp` and uses `_sidelinkerdirect._tcp`.
+The fork intentionally stops advertising/browsing upstream `_opensidecar._tcp` and uses `_sldirect._tcp`.
+
+Task09's operator-approved pre-runtime standards correction supersedes the earlier 16-character bootstrap service value before the first serious signed/device/TCC baseline. The current service name is eight ASCII characters excluding the leading underscore, within the 15-character limit in RFC6335 §5.1 / RFC6763 §7.2 and Apple's DNS-SD APIs. All other Task08 identities and OpenDisplay media v3 remain unchanged; no historical-service alias is retained.
 
 The underlying OpenDisplay protocol remains version 3. No framing/media/control semantic change is made.
 
@@ -88,7 +90,7 @@ Required before runtime PASS:
 - grant Accessibility when input is tested;
 - confirm virtual display reports the new vendor/product IDs;
 - install/sign the iPad receiver with the new Debug identity;
-- confirm Wi-Fi discovery uses only `_sidelinkerdirect._tcp`;
+- confirm Wi-Fi discovery uses only `_sldirect._tcp`;
 - confirm USB end-to-end streaming;
 - confirm no inherited OpenDisplay update/version endpoints are contacted.
 

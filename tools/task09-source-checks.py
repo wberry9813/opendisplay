@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Task09 source/frozen-boundary evidence, NOT runtime/media verification."""
 import re
+import plistlib
 import subprocess
 from pathlib import Path
 
@@ -10,6 +11,30 @@ BASE = "7f67f64e63cc5098dac114325e75986e2ca89b00"
 
 def original(path):
     return subprocess.check_output(["git", "show", f"{BASE}:{path}"], cwd=ROOT)
+
+
+# Operator-approved pre-runtime identity correction only. Read the historical
+# value from the immutable baseline instead of leaving its literal in the tree.
+SERVICE = "_sldirect._tcp"
+prior_project = original("project.yml").decode()
+bootstrap_service = re.findall(r'NSBonjourServices: \["([^"\s]+)"\]', prior_project)
+assert len(bootstrap_service) == 3 and len(set(bootstrap_service)) == 1
+bootstrap_service = bootstrap_service[0]
+assert len(bootstrap_service.split(".")[0][1:]) == 16
+identity_substitutions = {
+    "Shared/StreamReceiver.swift": 1,
+    "SIDELINKER_FORK_RULES.md": 2,
+    "SIDELINKER_ENGINE_ARCHITECTURE.md": 2,
+    "project.yml": 3,
+}
+
+
+def approved_identity(path, data):
+    if path in identity_substitutions:
+        old = bootstrap_service.encode()
+        assert data.count(old) == identity_substitutions[path], f"baseline identity count changed: {path}"
+        return data.replace(old, SERVICE.encode())
+    return data
 
 
 def normalized(text):
@@ -24,16 +49,41 @@ frozen = ["Mac/VirtualDisplay.swift", "Mac/StreamConfiguration.swift", "Mac/Usbm
           "SIDELINKER_ENGINE_ARCHITECTURE.md", "SIDELINKER_ENGINE_CONTROL_PROTOCOL.md"]
 tracked = subprocess.check_output(["git", "ls-tree", "-r", "--name-only", BASE, "iOS", "Shared", ".github"], cwd=ROOT).decode().splitlines()
 for path in sorted(set(frozen + tracked)):
-    assert (ROOT / path).read_bytes() == original(path), f"frozen path changed: {path}"
-print(f"PASS: {len(set(frozen + tracked))} frozen media/receiver/identity/distribution/contract paths byte-identical")
+    assert (ROOT / path).read_bytes() == approved_identity(path, original(path)), f"frozen path changed: {path}"
+print(f"PASS: {len(set(frozen + tracked))} frozen paths unchanged except exact approved discovery-token substitutions in three paths")
 
 # Info.plists are generated/untracked. Identity/distribution source-of-truth
-# configuration must be unchanged outside the hostless Mac test target.
+# configuration must be unchanged outside the hostless Mac test target and
+# precisely the three approved NSBonjourServices token substitutions.
 project = (ROOT / "project.yml").read_text()
-prior_project = original("project.yml").decode()
+prior_project = approved_identity("project.yml", original("project.yml")).decode()
 assert project[:project.index("  OpenSidecarMacTests:")] == prior_project[:prior_project.index("  OpenSidecarMacTests:")]
 assert project[project.index("  OpenSidecariOS:", project.index("  OpenSidecarMacTests:")):] == prior_project[prior_project.index("  OpenSidecariOS:", prior_project.index("  OpenSidecarMacTests:")):]
-print("PASS: all production target bundle/Bonjour/distribution configuration unchanged; only test target widened")
+print("PASS: production configuration unchanged except three approved Bonjour entries; only test target widened")
+
+# Regression assertion on the actual browser/listener/configuration bindings,
+# not just on a disconnected test constant. Does not start Network.framework.
+def service_types(text):
+    return re.findall(r'"(_[A-Za-z0-9-]+\._tcp)"', text)
+
+
+name = SERVICE.split(".")[0][1:]
+assert 1 <= len(name.encode("ascii")) <= 15
+assert re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?", name)
+assert re.search(r"[A-Za-z]", name) and "--" not in name
+assert service_types((ROOT / "Mac/Engine/DirectEngineController.swift").read_text()) == [SERVICE]
+assert service_types((ROOT / "Shared/StreamReceiver.swift").read_text()) == [SERVICE]
+assert service_types(project) == [SERVICE] * 3
+for path in ["Mac/Info.plist", "MacReceiver/Info.plist", "iOS/Info.plist"]:
+    with (ROOT / path).open("rb") as file:
+        assert plistlib.load(file)["NSBonjourServices"] == [SERVICE], f"generated Bonjour binding drift: {path}"
+print("PASS: eight-character RFC6335/RFC6763 service name and matching browser/listener/three generated plist bindings")
+
+stale = subprocess.run(["rg", "--hidden", "--no-ignore", "--glob", "!.git/**",
+                        "--fixed-strings", "--count-matches", bootstrap_service, "."],
+                       cwd=ROOT, capture_output=True, text=True)
+assert stale.returncode == 1 and not stale.stdout, f"stale token matches or search error: {stale.stdout}{stale.stderr}"
+print("PASS: zero stale service-token matches in entire working repository, including ignored/generated files (Git history excluded)")
 
 old = original("Mac/OpenSidecarMacApp.swift").decode()
 ui = (ROOT / "Mac/StandaloneSenderUI.swift").read_text()

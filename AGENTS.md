@@ -12,7 +12,7 @@ These identities are frozen after Task 08 Identity Bootstrap:
 - macOS receiver Debug: `com.dmer.sidelinker.direct.macreceiver.debug`
 - iOS/iPad receiver release: `com.dmer.sidelinker.direct.receiver`
 - iOS/iPad receiver Debug: `com.dmer.sidelinker.direct.receiver.debug`
-- Bonjour service type: `_sidelinkerdirect._tcp`
+- Bonjour service type: `_sldirect._tcp`
 - virtual display vendor/product base: `0x534C` ("SL") / `0x5344` ("SD")
 
 Do not casually change bundle identifiers, signing requirements, Bonjour type, or virtual-display vendor/product identity. macOS TCC associates Screen Recording and Accessibility grants with bundle identifier + signing requirement.

@@ -296,3 +296,41 @@ Unix socket unit fixtures use short `/tmp/task09-<random>/Direct/engine.sock` pa
 - Signed Debug/TCC, populated USB/Wi-Fi snapshots, real `startSession`/virtual display/stream, real stop/display teardown, active-session owner-loss cleanup, iPad USB/Wi-Fi media, Accessibility/input and network/update-endpoint runtime matrix: **PENDING**. Disabled distribution endpoints are source-preserved, not packet-capture-verified.
 - Operator Manual Acceptance: **PENDING**. Task09 is not complete/sealed/release-approved.
 - Next: one independent read-only checkpoint review, then stable signed Debug and real-device runtime/operator acceptance. No proprietary backend implementation is included.
+
+## Pre-runtime correction — Bonjour service name (2026-10-13)
+
+Operator-authorized pre-runtime standards correction applied before the first serious signed/device/TCC Bonjour runtime baseline. This changes only the discovery-token value; no media/framing/control semantics and no other Task 08 identity changes.
+
+### Defect
+
+The Task 08 bootstrap Bonjour type carried a 16-character DNS-SD service name. RFC 6335 §5.1 and RFC 6763 §7.2 — and Apple's DNS-SD/`Network.framework` APIs — limit a service name to 15 characters, so the advertised/browsed type was invalid. It never reached a signed/device baseline. No bytes on the media wire are affected. The superseded literal survives only as the immutable `7f67f64` baseline that `tools/task09-source-checks.py` reads programmatically; it is deliberately absent from the working tree.
+
+### Correction
+
+The bootstrap type becomes `_sldirect._tcp` (service name `sldirect`, 8 ASCII characters), applied consistently to every production and evidence surface:
+
+| Surface | Files |
+| --- | --- |
+| Sender browser | `Mac/Engine/DirectEngineController.swift` |
+| Receiver listener | `Shared/StreamReceiver.swift` |
+| Project config (Mac / MacReceiver / iOS) | `project.yml` |
+| Tracked receiver plist | `MacReceiver/Info.plist` |
+| Generated plists (Mac / iOS) | regenerated from `project.yml` via `./generate.sh` |
+| Protocol/identity docs | `PROTOCOL.md`, `SIDELINKER_FORK_RULES.md`, `SIDELINKER_ENGINE_ARCHITECTURE.md`, `AGENTS.md`, `SIDELINKER_TASKS/08-identity-bootstrap.md` |
+| Source checks | `tools/task09-source-checks.py` (derives the historical token from the immutable baseline; adds a standards-limit check, browser/listener/three-plist binding check and zero-stale-token scan over ignored/generated files, Git history excluded) |
+| New test | `MacTests/BonjourIdentityTests.swift` |
+
+Preserved unchanged: OpenDisplay protocol/media version 3, and every other Task 08 identity (bundle IDs, virtual-display vendor/product `0x534C`/`0x5344`, App Store deep-link ID). No historical-service alias is retained; the working tree contains zero superseded bootstrap tokens outside Git history. `SIDELINKER_TASKS/08-identity-bootstrap.md` records the supersession in prose only, without leaving the stale literal in the tree.
+
+### Evidence (this correction)
+
+Artifact root: `/Users/dmer/SideLinker-artifacts/task09-bonjour-fix/`. Build/DerivedData was placed on the internal Data volume because the preferred SSD artifact volume was full (32 Mi free); logs and the result bundle are copied to the durable artifact root.
+
+1. `./generate.sh` — succeeded; regenerated `Mac/Info.plist`, `MacReceiver/Info.plist` and `iOS/Info.plist`, all advertising `_sldirect._tcp`.
+2. `xcodebuild … CODE_SIGNING_ALLOWED=NO test` — `tests-bonjour-fix.log`: **TEST SUCCEEDED**; 114 XCTest tests, zero failures; 20 Swift Testing tests in 4 suites (including the new `BonjourIdentityTests`).
+3. Sender unsigned arm64 Debug build — `build-bonjour-fix.log`: **BUILD SUCCEEDED**; `SideLinker Direct Dev.app` embeds `_sldirect._tcp` and `com.dmer.sidelinker.direct.mac.debug`.
+4. Mac receiver unsigned arm64 Debug build — `build-receiver.log`: **BUILD SUCCEEDED**; `SideLinker Direct Receiver Dev.app` embeds `_sldirect._tcp` and `com.dmer.sidelinker.direct.macreceiver.debug`.
+5. iOS unsigned build (`generic/platform=iOS Simulator`) — `build-ios.log`: **BUILD SUCCEEDED**; `OpenSidecariOS.app` embeds `_sldirect._tcp` and `com.dmer.sidelinker.direct.receiver.debug`.
+6. `python3 tools/task09-source-checks.py` — `source-checks-bonjour-fix.log`: all PASS, including the ≤15-character RFC 6335/6763 name check, the three generated `NSBonjourServices` bindings, the zero-stale-token scan, and terminating `git diff --check` PASS.
+
+These remain source/build checks. Signed/TCC launch, populated USB/Wi-Fi snapshots, real `startSession`/stream/teardown, iPad USB/Wi-Fi media, Accessibility/input and the endpoint runtime matrix remain **PENDING**.

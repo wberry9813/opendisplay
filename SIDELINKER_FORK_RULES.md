@@ -56,7 +56,7 @@ Task 08 establishes these identities once. Treat later changes as GUARDED becaus
 | iOS/iPad receiver Debug bundle | `com.dmer.sidelinker.direct.receiver.debug` |
 | Product name | `SideLinker Direct` |
 | Mac receiver product name | `SideLinker Direct Receiver` |
-| Bonjour service type | `_sidelinkerdirect._tcp` |
+| Bonjour service type | `_sldirect._tcp` |
 | Virtual-display vendor ID | `0x534C` ("SL") |
 | Virtual-display product base | `0x5344` ("SD") |
 | SideLinker App Store listing ID used for deep links | `6760007015` |
@@ -67,7 +67,7 @@ The App Store numeric ID is an update/review destination supplied by the operato
 
 The wire protocol remains the OpenDisplay protocol (`pv = 3` at bootstrap).
 
-The Bonjour service type intentionally changes from upstream `_opensidecar._tcp` to `_sidelinkerdirect._tcp`.
+The Bonjour service type intentionally changes from upstream `_opensidecar._tcp` to `_sldirect._tcp`.
 
 Result:
 

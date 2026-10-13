@@ -26,7 +26,7 @@
 	<string>SideLinker Direct Receiver shuts this Mac down when the connected Mac asks it to.</string>
 	<key>NSBonjourServices</key>
 	<array>
-		<string>_sidelinkerdirect._tcp</string>
+		<string>_sldirect._tcp</string>
 	</array>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>SideLinker Direct Receiver advertises itself on the local network so another Mac can connect and use this Mac as a display.</string>

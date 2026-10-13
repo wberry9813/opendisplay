@@ -275,7 +275,7 @@ final class StreamReceiver: ObservableObject {
         var txt = NWTXTRecord()
         txt["id"] = Self.installID
         txt["pv"] = String(WireProtocol.version)   // issue #132
-        return NWListener.Service(name: serviceName, type: "_sidelinkerdirect._tcp",
+        return NWListener.Service(name: serviceName, type: "_sldirect._tcp",
                                   domain: nil, txtRecord: txt)
     }
 
