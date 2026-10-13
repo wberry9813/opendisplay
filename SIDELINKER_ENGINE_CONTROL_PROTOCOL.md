@@ -96,6 +96,22 @@ Optional additive fields may include panel facts, protocol version and codec cap
 
 `receiverID` is engine-defined and must remain stable enough for one install/device identity across USB and Wi-Fi when upstream identity evidence permits.
 
+## Session grant semantics
+
+Protocol v1 treats a successful `startSession` as an explicit **Direct session grant** from SideLinker.
+
+Discovery by itself never creates such a grant.
+
+While no grant exists, receiver/transport changes may generate `receiverSnapshot` events but must not start a new Direct display session.
+
+While a grant exists, the engine may autonomously recover or migrate the already-authorized session using its existing low-level reconnect mechanics, subject to the requested transport preference.
+
+A successful `stopSession` **revokes** the grant. After revocation, discovery, remembered-device state, Bonjour refreshes, USB attach events and stale reconnect timers must not resurrect the session.
+
+Only a new `startSession` may authorize a new Direct session.
+
+The engine protocol does not arbitrate Native Sidecar. SideLinker product policy is responsible for granting connection intent to only one backend at a time.
+
 ## Methods
 
 ### hello

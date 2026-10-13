@@ -170,3 +170,16 @@ This does not change the OpenDisplay sender/receiver media transport: engine <->
 Task 09 should reuse the existing SideLinker Direct Mac bundle/TCC identity in a headless launch mode instead of creating another identity.
 
 Substantive implementation remains blocked until the existing independent architecture/license-boundary review gate passes.
+
+
+## Connection ownership / anti-race rule
+
+Discovery does not equal permission to connect.
+
+- Native Sidecar and Direct may each observe their own discovery signals.
+- Proprietary SideLinker / DisplayCoordinator owns product connection intent and must choose the active backend.
+- Managed/headless Direct mode must never start a new session solely from USB attach, Bonjour discovery, remembered-device state or discovery refresh.
+- A successful `startSession` grants one Direct product session.
+- The engine may autonomously recover that already-authorized session.
+- A successful `stopSession` revokes the grant; later discovery/reconnect activity must not resurrect it.
+- Standalone fork mode may retain upstream auto-connect policy for development, but managed mode must remain passive until explicitly authorized.

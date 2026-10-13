@@ -338,7 +338,105 @@ not:
 Engine -> SideLinker -> receiver
 ```
 
-## 9. Engine controller extraction seam
+## 9. Connection ownership and discovery arbitration
+
+Discovery and connection intent are separate responsibilities.
+
+### Hard rule: discovery is local, connection authority is product-owned
+
+Both backend families may continue to observe the signals they need:
+
+- Native Sidecar may observe its existing USB/BLE/iCloud/product signals;
+- SideLinker Direct Engine may observe usbmuxd and `_sidelinkerdirect._tcp` Bonjour discovery.
+
+Those observations do **not** grant permission to start a display session.
+
+Only proprietary SideLinker product policy / DisplayCoordinator may decide which backend owns the product connection intent.
+
+Conceptually:
+
+```text
+Native discovery ---------+
+                          |
+Direct discovery ---------+--> SideLinker product policy
+                                |
+                                | grants exactly one connection intent
+                       +--------+--------+
+                       |                 |
+                       v                 v
+                  Native connect    Direct startSession
+```
+
+### Managed Direct mode must be passive while idle
+
+In managed/headless mode:
+
+- USB attach may update receiver snapshots;
+- Bonjour appearance/disappearance may update receiver snapshots;
+- transport availability may change;
+- the engine must **not** create a new session solely because discovery changed;
+- the engine must **not** auto-connect a remembered receiver while no SideLinker-authorized session exists.
+
+This intentionally differs from the standalone OpenDisplay-derived app behavior.
+
+### Standalone mode may keep upstream auto-connect behavior
+
+The fork may preserve the existing standalone development UI and its current auto-connect/reconnect policy.
+
+Therefore the runtime modes have different product authority:
+
+```text
+Standalone mode
+  discovery -> existing standalone auto-connect policy is allowed
+
+Managed/headless mode
+  discovery -> snapshot only
+  startSession -> grants product-managed session authority
+```
+
+Do not implement two separate discovery stacks; both modes should reuse the extracted engine controller and differ only in policy/adaptor behavior.
+
+### Authorized session recovery remains engine-owned
+
+Once SideLinker sends a successful `startSession`, the engine owns low-level recovery for that authorized session.
+
+It may autonomously perform the mature OpenDisplay-derived mechanics required to keep **that same authorized session** alive, including:
+
+- receiver reconnect after transient link loss;
+- USB/Wi-Fi transport migration/fallback within the requested transport policy;
+- receiver sleep/wake recovery;
+- keyframe recovery;
+- stream rebuild after rotation/configuration changes.
+
+These are session mechanics, not new product connection decisions.
+
+### stopSession is revocation, not a hint
+
+A successful `stopSession` revokes the product session grant.
+
+After revocation:
+
+- the engine tears down the session/virtual display;
+- USB attach must not recreate it;
+- Bonjour rediscovery must not recreate it;
+- a remembered receiver must not recreate it;
+- reconnect timers belonging to the revoked session must become inert.
+
+A new session requires a new SideLinker `startSession`.
+
+### Exclusive backend ownership
+
+At the SideLinker product level, only one backend should own the active display connection intent for the first Direct integration.
+
+When Direct owns the active product session, Native auto-connect triggers must not independently establish a competing Native Sidecar session.
+
+When Native owns the active product session, SideLinker must not send a Direct `startSession`.
+
+The Direct engine may continue discovery in either case so SideLinker can display availability and switch deliberately later.
+
+This is a **product-level ownership/lease rule**. The Direct engine does not need to understand Native Sidecar; it only needs to obey whether a Direct session grant currently exists.
+
+## 10. Engine controller extraction seam
 
 Current `Mac/OpenSidecarMacApp.swift` mixes:
 
@@ -371,7 +469,7 @@ DirectEngineController
 
 The existing standalone Mac UI should become a **client/adaptor of the extracted controller**, not remain the only owner of discovery/session mechanics.
 
-## 10. Upstream-preservation rule
+## 11. Upstream-preservation rule
 
 Task 09 should preserve and reuse:
 
@@ -387,7 +485,7 @@ Do not rewrite those components merely to fit the new control API.
 
 Prefer moving orchestration into new files and making small call-site adaptations.
 
-## 11. Session cardinality
+## 12. Session cardinality
 
 Upstream OpenDisplay currently supports multiple sessions.
 
@@ -397,7 +495,7 @@ This keeps the first SideLinker backend contract simple while avoiding an upstre
 
 Future multi-display product support can widen the control contract additively.
 
-## 12. Failure / ownership behavior
+## 13. Failure / ownership behavior
 
 - SideLinker losing the control socket must not leave an unmanaged virtual display indefinitely.
 - Engine should associate the active product-managed session with the control owner.
@@ -406,7 +504,7 @@ Future multi-display product support can widen the control contract additively.
 - On engine crash: SideLinker reports Direct unavailable and may apply bounded product retry policy.
 - Engine internal reconnects to the receiver remain engine-owned and should not require SideLinker to replay media-layer operations.
 
-## 13. Receiver transport remains OpenDisplay-derived
+## 14. Receiver transport remains OpenDisplay-derived
 
 ### Wi-Fi
 
@@ -431,7 +529,7 @@ Engine -> /var/run/usbmuxd
 
 SideLinker itself never owns this media connection.
 
-## 14. Licensing/process boundary
+## 15. Licensing/process boundary
 
 This document records an engineering architecture, not a legal conclusion.
 
@@ -444,7 +542,7 @@ The intended boundary is:
 
 Packaging/distribution/source-offer obligations still require explicit later review.
 
-## 15. Task 09 gate
+## 16. Task 09 gate
 
 Identity Bootstrap is complete at `595ce69a2feda8eafb7ba2c310fcca2c366baa3d`.
 

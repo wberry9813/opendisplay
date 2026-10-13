@@ -47,6 +47,25 @@ SideLinker Direct Engine process
    +---- USB/Wi-Fi ----> Direct Receiver
 ```
 
+## Connection ownership requirement
+
+Task 09 must explicitly separate **discovery** from **connection authority**.
+
+Managed/headless engine mode:
+
+- keeps Bonjour and usbmuxd discovery active;
+- publishes receiver/transport snapshots;
+- must not auto-create a session from USB attach, Bonjour discovery, remembered-device state or discovery refresh;
+- creates a product-managed session only after `startSession`.
+
+Once a SideLinker-authorized session exists, existing low-level OpenDisplay recovery/reconnect/transport-migration behavior may keep that same session alive.
+
+After `stopSession`, the grant is revoked and no discovery/reconnect path may resurrect it.
+
+The existing standalone development mode may retain upstream-style auto-connect behavior, but it must reuse the same extracted discovery/session mechanics through a standalone policy adaptor rather than duplicate the stack.
+
+SideLinker product policy owns exclusive backend connection intent: Direct discovery may continue while Native is active, but no Direct session starts until SideLinker grants it.
+
 ## Implementation sequence after review PASS
 
 ### Phase A — extract engine-owned receiver/session model
@@ -158,9 +177,12 @@ Minimum writer verification:
 5. protocol framing/parser synthetic tests pass;
 6. receiver snapshot dedupe tests pass;
 7. start/stop lifecycle synthetic tests pass;
-8. frozen media-core diff is inspected and justified;
-9. no localhost/LAN control listener exists;
-10. `git diff --check` passes.
+8. managed-mode discovery cannot auto-start a session;
+9. `stopSession` prevents USB/Bonjour/reconnect resurrection;
+10. authorized-session reconnect remains functional;
+11. frozen media-core diff is inspected and justified;
+12. no localhost/LAN control listener exists;
+13. `git diff --check` passes.
 
 Runtime gate after source verification:
 
