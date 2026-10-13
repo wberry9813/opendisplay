@@ -234,7 +234,7 @@ final class StreamReceiver: ObservableObject {
     // needs an entitlement Apple gates behind approval and personal teams
     // can't get), so this is user-editable in Settings. The USB picker gets
     // the real name host-side via lockdownd regardless.
-    var serviceName = "OpenDisplay"
+    var serviceName = "SideLinker Direct"
 
     // Platform identity, injected at init so this file stays UI-framework-free.
     /// "iPhone" / "iPad" / "Mac" — announced in the hello (the sender names
@@ -275,7 +275,7 @@ final class StreamReceiver: ObservableObject {
         var txt = NWTXTRecord()
         txt["id"] = Self.installID
         txt["pv"] = String(WireProtocol.version)   // issue #132
-        return NWListener.Service(name: serviceName, type: "_opensidecar._tcp",
+        return NWListener.Service(name: serviceName, type: "_sidelinkerdirect._tcp",
                                   domain: nil, txtRecord: txt)
     }
 
@@ -863,7 +863,7 @@ final class StreamReceiver: ObservableObject {
                 self.macProtocolVersion = macPV
             }
             if macPV < WireProtocol.minSupportedPeer {
-                let msg = "OpenDisplay on the connecting computer is too old for this \(deviceKind) app. Update it there to reconnect."
+                let msg = "SideLinker Direct on the connecting computer is too old for this \(deviceKind) app. Update it there to reconnect."
                 DispatchQueue.main.async { self.peerSignal = .updateMac(message: msg) }
             }
         case WireMessage.streamConfig:

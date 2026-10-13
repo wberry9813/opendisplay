@@ -1,18 +1,7 @@
 name: Deploy GitHub Pages
 
+# SideLinker fork safety: inherited OpenDisplay Pages content must not auto-publish.
 on:
-  push:
-    branches: [main]
-    paths:
-      - "src/**"
-      - "public/**"
-      - "tools/prerender.mjs"
-      - "index.html"
-      - "package.json"
-      - "pnpm-lock.yaml"
-      - "vite.config.ts"
-      - "tsconfig.json"
-      - ".github/workflows/pages.yml"
   workflow_dispatch:
 
 permissions:

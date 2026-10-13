@@ -37,7 +37,7 @@ struct OpenSidecarMacApp: App {
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    // Sparkle's standard updater. `startingUpdater: true` boots the updater
+    // Sparkle's standard updater. `startingUpdater: false` boots the updater
     // immediately so scheduled background checks (SUEnableAutomaticChecks)
     // run; the menu item drives manual "Check for Updates…". Held for the
     // app's lifetime here so every window (menu bar + control window) shares
@@ -79,7 +79,7 @@ enum MainWindow {
                 contentRect: NSRect(x: 0, y: 0, width: 440, height: 540),
                 styleMask: [.titled, .closable, .miniaturizable],
                 backing: .buffered, defer: false)
-            w.title = "OpenDisplay"
+            w.title = "SideLinker Direct"
             w.contentView = NSHostingView(
                 rootView: ContentView(controller: SenderController.shared,
                                       updater: updater))
@@ -301,7 +301,7 @@ final class SenderController: ObservableObject {
 
     private func startBrowsing() {
         // TXT records carry the receiver's install id (new receivers).
-        let browser = NWBrowser(for: .bonjourWithTXTRecord(type: "_opensidecar._tcp", domain: nil), using: .tcp)
+        let browser = NWBrowser(for: .bonjourWithTXTRecord(type: "_sidelinkerdirect._tcp", domain: nil), using: .tcp)
         browser.browseResultsChangedHandler = { [weak self] results, _ in
             DispatchQueue.main.async {
                 guard let self else { return }
@@ -922,7 +922,7 @@ struct ContentView: View {
                     .resizable()
                     .frame(width: 44, height: 44)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("OpenDisplay")
+                    Text("SideLinker Direct")
                         .font(.title3.bold())
                     Text("Your iPads, iPhones and Macs as extra displays")
                         .font(.caption)
@@ -942,7 +942,7 @@ struct ContentView: View {
             Form {
                 Section("Devices") {
                     if controller.deviceEntries.isEmpty {
-                        Text("No devices found — plug one in via USB, or open the OpenDisplay app on a device on this WiFi network.")
+                        Text("No devices found — plug one in via USB, or open the SideLinker Direct app on a device on this WiFi network.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -1002,7 +1002,7 @@ struct ContentView: View {
                         }
                     }
                     if controller.presentation == .background {
-                        Text("No menu bar or Dock icon — streaming keeps running. Open the OpenDisplay app again (Spotlight/Finder) to show this window.")
+                        Text("No menu bar or Dock icon — streaming keeps running. Open the SideLinker Direct app again (Spotlight/Finder) to show this window.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -1039,7 +1039,7 @@ struct ContentView: View {
                         "Local Network",
                         granted: !controller.discovered.isEmpty,
                         uncertain: controller.discovered.isEmpty,
-                        help: "Required for WiFi mode. If no device appears in the Devices list, allow OpenDisplay under Privacy & Security → Local Network on this Mac AND on the device — and keep the OpenDisplay app open there.",
+                        help: "Required for WiFi mode. If no device appears in the Devices list, allow SideLinker Direct under Privacy & Security → Local Network on this Mac AND on the device — and keep the SideLinker Direct app open there.",
                         anchor: "Privacy_LocalNetwork"
                     )
                 }
@@ -1067,7 +1067,7 @@ struct ContentView: View {
                 // filesystem path to find it.
                 Button("Logs") { Log.revealInFinder() }
                     .controlSize(.small)
-                    .help("Reveal the OpenDisplay log files in Finder")
+                    .help("Reveal the SideLinker Direct log files in Finder")
                 if let updater {
                     CheckForUpdatesView(updater: updater)
                 }

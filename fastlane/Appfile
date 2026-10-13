@@ -1,2 +1,2 @@
-app_identifier(["com.peetzweg.opensidecar.mac", "com.peetzweg.opensidecar.mac.receiver", "com.peetzweg.opensidecar.ios"])
+app_identifier(["com.dmer.sidelinker.direct.mac", "com.dmer.sidelinker.direct.macreceiver", "com.dmer.sidelinker.direct.receiver"])
 team_id(ENV["DEVELOPMENT_TEAM"])

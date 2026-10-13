@@ -57,30 +57,25 @@ targets:
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         LSUIElement: true
-        NSLocalNetworkUsageDescription: OpenDisplay connects to your iPad or iPhone over the local network in WiFi mode.
-        NSBonjourServices: ["_opensidecar._tcp"]
+        NSLocalNetworkUsageDescription: SideLinker Direct connects to your iPad or iPhone over the local network in WiFi mode.
+        NSBonjourServices: ["_sidelinkerdirect._tcp"]
         LSApplicationCategoryType: public.app-category.utilities
-        # --- Sparkle auto-update (issue #52) ---
-        # The appcast feed is hosted on the landing-page site at the custom
-        # domain. The release workflow publishes appcast.xml so this URL
-        # resolves — see .github/workflows/release.yml.
-        SUFeedURL: https://opendisplay.app/appcast.xml
-        # Public EdDSA key from Sparkle's `generate_keys`. The matching private
-        # key lives only as the `SPARKLE_PRIVATE_KEY` GitHub Actions secret
-        # (used to sign the appcast in CI) and is never committed. Sparkle
-        # verifies update signatures against this public key before installing.
-        SUPublicEDKey: rYxlIePmwzi2bRo/qIsuY2TqTnQ34li2gQhJpGBiumw=
-        # Check for updates automatically in the background on a schedule.
-        SUEnableAutomaticChecks: true
+        # SideLinker fork: inherited OpenDisplay Sparkle feed/key are intentionally disabled.
+        # Re-enable only after a SideLinker-owned feed and signing key are configured.
+        SUEnableAutomaticChecks: false
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.peetzweg.opensidecar.mac
-        PRODUCT_NAME: OpenDisplay
-        BUNDLE_DISPLAY_NAME: OpenDisplay
+        PRODUCT_BUNDLE_IDENTIFIER: com.dmer.sidelinker.direct.mac
+        PRODUCT_NAME: SideLinker Direct
+        BUNDLE_DISPLAY_NAME: SideLinker Direct
         SWIFT_OBJC_BRIDGING_HEADER: Mac/OpenSidecarMac-Bridging-Header.h
         ENABLE_HARDENED_RUNTIME: YES
         CODE_SIGN_ENTITLEMENTS: Mac/OpenSidecarMac.entitlements
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+      configs:
+        Debug:
+          PRODUCT_BUNDLE_IDENTIFIER: com.dmer.sidelinker.direct.receiver.debug
+          BUNDLE_DISPLAY_NAME: SideLinker Direct Dev
       configs:
         # Local dev builds get their own identity: TCC keys permission
         # grants by bundle ID + code signature, so a Debug build sharing
@@ -90,9 +85,9 @@ targets:
         # lists show, so the Debug build must override it to appear as its
         # own row instead of a second, indistinguishable "OpenDisplay".
         Debug:
-          PRODUCT_BUNDLE_IDENTIFIER: com.peetzweg.opensidecar.mac.debug
-          PRODUCT_NAME: OpenDisplay Dev
-          BUNDLE_DISPLAY_NAME: OpenDisplay Dev
+          PRODUCT_BUNDLE_IDENTIFIER: com.dmer.sidelinker.direct.mac.debug
+          PRODUCT_NAME: SideLinker Direct Dev
+          BUNDLE_DISPLAY_NAME: SideLinker Direct Dev
           # Colour-inverted icon so the dev build is obvious in the Dock,
           # cmd-tab and permission lists.
           ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon-Dev
@@ -120,20 +115,18 @@ targets:
         CFBundleDisplayName: $(BUNDLE_DISPLAY_NAME)
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
-        NSLocalNetworkUsageDescription: OpenDisplay Receiver advertises itself on the local network so another Mac can connect and use this Mac as a display.
-        NSBonjourServices: ["_opensidecar._tcp"]
-        NSAppleEventsUsageDescription: OpenDisplay Receiver shuts this Mac down when the connected Mac asks it to.
+        NSLocalNetworkUsageDescription: SideLinker Direct Receiver advertises itself on the local network so another Mac can connect and use this Mac as a display.
+        NSBonjourServices: ["_sidelinkerdirect._tcp"]
+        NSAppleEventsUsageDescription: SideLinker Direct Receiver shuts this Mac down when the connected Mac asks it to.
         LSApplicationCategoryType: public.app-category.utilities
-        # Own Sparkle feed (separate DMG, same signing key); published by
-        # release.yml next to the sender's appcast.
-        SUFeedURL: https://opendisplay.app/appcast-receiver.xml
-        SUPublicEDKey: rYxlIePmwzi2bRo/qIsuY2TqTnQ34li2gQhJpGBiumw=
-        SUEnableAutomaticChecks: true
+        # SideLinker fork: inherited OpenDisplay Sparkle feed/key are intentionally disabled.
+        # Re-enable only after a SideLinker-owned feed and signing key are configured.
+        SUEnableAutomaticChecks: false
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.peetzweg.opensidecar.mac.receiver
-        PRODUCT_NAME: OpenDisplay Receiver
-        BUNDLE_DISPLAY_NAME: OpenDisplay Receiver
+        PRODUCT_BUNDLE_IDENTIFIER: com.dmer.sidelinker.direct.macreceiver
+        PRODUCT_NAME: SideLinker Direct Receiver
+        BUNDLE_DISPLAY_NAME: SideLinker Direct Receiver
         # Log.swift's file locking helpers live in the C bridging header.
         SWIFT_OBJC_BRIDGING_HEADER: Mac/OpenSidecarMac-Bridging-Header.h
         ENABLE_HARDENED_RUNTIME: YES
@@ -141,9 +134,9 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
       configs:
         Debug:
-          PRODUCT_BUNDLE_IDENTIFIER: com.peetzweg.opensidecar.mac.receiver.debug
-          PRODUCT_NAME: OpenDisplay Receiver Dev
-          BUNDLE_DISPLAY_NAME: OpenDisplay Receiver Dev
+          PRODUCT_BUNDLE_IDENTIFIER: com.dmer.sidelinker.direct.macreceiver.debug
+          PRODUCT_NAME: SideLinker Direct Receiver Dev
+          BUNDLE_DISPLAY_NAME: SideLinker Direct Receiver Dev
           ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon-Dev
   OpenSidecarMacTests:
     type: bundle.unit-test
@@ -185,14 +178,14 @@ targets:
     info:
       path: iOS/Info.plist
       properties:
-        CFBundleDisplayName: OpenDisplay
+        CFBundleDisplayName: $(BUNDLE_DISPLAY_NAME)
         CFBundleIconName: AppIcon
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         UILaunchScreen: {}
         UIRequiresFullScreen: true
-        NSLocalNetworkUsageDescription: OpenDisplay advertises itself on the local network so your Mac can connect over WiFi.
-        NSBonjourServices: ["_opensidecar._tcp"]
+        NSLocalNetworkUsageDescription: SideLinker Direct advertises itself on the local network so your Mac can connect over WiFi.
+        NSBonjourServices: ["_sidelinkerdirect._tcp"]
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationLandscapeLeft
@@ -200,6 +193,7 @@ targets:
           - UIInterfaceOrientationPortraitUpsideDown
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.peetzweg.opensidecar.ios
+        PRODUCT_BUNDLE_IDENTIFIER: com.dmer.sidelinker.direct.receiver
+        BUNDLE_DISPLAY_NAME: SideLinker Direct
         TARGETED_DEVICE_FAMILY: "1,2"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon

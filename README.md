@@ -1,3 +1,5 @@
+> **SideLinker Direct fork:** this repository is the GPL OpenDisplay-derived Direct Display implementation used for SideLinker development. Runtime identities and discovery are intentionally isolated from official OpenDisplay. Automated upstream publishing/update endpoints are disabled. See [SIDELINKER_FORK_RULES.md](SIDELINKER_FORK_RULES.md) before making fork-specific changes.
+
 <div align="center">
 
 <img src="public/logo.png" width="128" alt="OpenDisplay app icon" />

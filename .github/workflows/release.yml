@@ -1,8 +1,9 @@
 name: Release
 
+# SideLinker fork safety: publishing is opt-in and disabled unless the repository
+# variable SIDELINKER_FORK_PUBLISH_ENABLED is explicitly set to "true".
 on:
-  push:
-    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -19,6 +20,7 @@ concurrency:
 
 jobs:
   release-please:
+    if: ${{ vars.SIDELINKER_FORK_PUBLISH_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     outputs:
       release_created: ${{ steps.rp.outputs.release_created }}
@@ -120,8 +122,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release upload "${{ needs.release-please.outputs.tag_name }}" \
-            build/export/OpenDisplay.dmg \
-            build/export/OpenDisplayReceiver.dmg
+            build/export/SideLinkerDirect.dmg \
+            build/export/SideLinkerDirectReceiver.dmg
 
       # --- Sparkle auto-update: generate + publish the appcasts (issue #52) ---
       # Builds appcast.xml (sender) and appcast-receiver.xml (receiver app)
@@ -160,8 +162,8 @@ jobs:
           # Point the download links at the GitHub Release assets where the
           # DMGs live.
           mkdir -p /tmp/appcast-updates /tmp/appcast-receiver-updates
-          cp build/export/OpenDisplay.dmg /tmp/appcast-updates/
-          cp build/export/OpenDisplayReceiver.dmg /tmp/appcast-receiver-updates/
+          cp build/export/SideLinkerDirect.dmg /tmp/appcast-updates/
+          cp build/export/SideLinkerDirectReceiver.dmg /tmp/appcast-receiver-updates/
 
           "$GEN_APPCAST" \
             --ed-key-file /tmp/sparkle_ed_priv \

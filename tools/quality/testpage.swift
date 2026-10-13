@@ -1,4 +1,4 @@
-// Static sharpness/colour page on the OpenDisplay virtual screen.
+// Static sharpness/colour page on the SideLinker Direct virtual screen.
 // Writes ground-truth renders of the same view at 2x and 2.5x plus the window's
 // position in virtual-display pixels, then stays up until killed.
 // usage: testpage <outdir> [static|change|scroll] [frames]  (see tools/quality/README.md)
@@ -88,9 +88,9 @@ final class Page: NSView {
 let out = URL(fileURLWithPath: CommandLine.arguments[1])
 var ids = [CGDirectDisplayID](repeating: 0, count: 32); var count: UInt32 = 0
 CGGetOnlineDisplayList(32, &ids, &count)
-guard let vd = ids.prefix(Int(count)).first(where: { CGDisplayVendorNumber($0) == 0x5043 && CGDisplayModelNumber($0) == 0x4F53 }),
+guard let vd = ids.prefix(Int(count)).first(where: { CGDisplayVendorNumber($0) == 0x534C && CGDisplayModelNumber($0) == 0x5344 }),
       let screen = NSScreen.screens.first(where: { ($0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID) == vd })
-else { fputs("no OpenDisplay screen\n", stderr); exit(1) }
+else { fputs("no SideLinker Direct screen\n", stderr); exit(1) }
 
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory)

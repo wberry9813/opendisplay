@@ -21,11 +21,11 @@ Two companion documents:
 
 ### Naming
 
-The protocol is named the **OpenDisplay protocol** after the product. For
-historical reasons the Bonjour service type is `_opensidecar._tcp` (the
-project's original name) and it stays that way: renaming it would break
-every deployed peer for zero functional gain. Do not read anything into the
-mismatch.
+The wire protocol remains the **OpenDisplay protocol** and stays at protocol
+version 3 in this fork. SideLinker Direct intentionally uses a different
+Bonjour discovery namespace, `_sidelinkerdirect._tcp`, so the fork does not
+silently discover or auto-connect to the official OpenDisplay apps. This is a
+fork-level discovery binding change, not a media/framing protocol change.
 
 ### No support commitment
 
@@ -81,7 +81,7 @@ anything else in this document.
 
 The receiver advertises a Bonjour (mDNS/DNS-SD) service:
 
-* **Type:** `_opensidecar._tcp`
+* **Type:** `_sidelinkerdirect._tcp`
 * **Name:** a human-readable, user-editable device name (defaults to the
   device's name). The name is display-only. It MUST NOT be used as a device
   identity: users rename devices, and two devices can share a name.

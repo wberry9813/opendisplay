@@ -280,7 +280,7 @@ final class ReceiverController: ObservableObject {
             let w = NSWindow(contentRect: initialContentRect(video: receiver.videoSize),
                              styleMask: [.titled, .closable, .miniaturizable, .resizable],
                              backing: .buffered, defer: false)
-            w.title = "OpenDisplay"
+            w.title = "SideLinker Direct"
             w.contentView = ReceiverVideoView(receiver: receiver)
             w.isReleasedWhenClosed = false
             w.collectionBehavior.insert(.fullScreenPrimary)
@@ -375,11 +375,11 @@ final class ReceiverController: ObservableObject {
         if receiving, sleepActivity == nil {
             var assertionID = IOPMAssertionID(0)
             IOPMAssertionDeclareUserActivity(
-                "OpenDisplay stream started" as CFString,
+                "SideLinker Direct stream started" as CFString,
                 kIOPMUserActiveLocal, &assertionID)
             sleepActivity = ProcessInfo.processInfo.beginActivity(
                 options: [.idleDisplaySleepDisabled, .idleSystemSleepDisabled],
-                reason: "OpenDisplay is receiving a display stream")
+                reason: "SideLinker Direct is receiving a display stream")
         } else if !receiving, let activity = sleepActivity {
             ProcessInfo.processInfo.endActivity(activity)
             sleepActivity = nil

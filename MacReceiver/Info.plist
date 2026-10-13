@@ -23,20 +23,16 @@
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.utilities</string>
 	<key>NSAppleEventsUsageDescription</key>
-	<string>OpenDisplay Receiver shuts this Mac down when the connected Mac asks it to.</string>
+	<string>SideLinker Direct Receiver shuts this Mac down when the connected Mac asks it to.</string>
 	<key>NSBonjourServices</key>
 	<array>
-		<string>_opensidecar._tcp</string>
+		<string>_sidelinkerdirect._tcp</string>
 	</array>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>OpenDisplay Receiver advertises itself on the local network so another Mac can connect and use this Mac as a display.</string>
+	<string>SideLinker Direct Receiver advertises itself on the local network so another Mac can connect and use this Mac as a display.</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 	<key>SUEnableAutomaticChecks</key>
-	<true/>
-	<key>SUFeedURL</key>
-	<string>https://opendisplay.app/appcast-receiver.xml</string>
-	<key>SUPublicEDKey</key>
-	<string>rYxlIePmwzi2bRo/qIsuY2TqTnQ34li2gQhJpGBiumw=</string>
+	<false/>
 </dict>
 </plist>

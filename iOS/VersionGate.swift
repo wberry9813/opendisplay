@@ -9,8 +9,9 @@ import SwiftUI
 
 // MARK: - Version gate (issue #135)
 
-/// Connection-independent update lever. On launch the app fetches a small
-/// policy file we host on GitHub Pages next to the Sparkle appcast and compares
+/// Connection-independent update lever. Upstream fetches a small policy file
+/// from its Pages site. The SideLinker fork leaves the manifest URL nil until
+/// a SideLinker-owned endpoint exists. When enabled, it compares
 /// its own version against it. This is the ONLY mechanism that can reach an
 /// install that never connects to an updated Mac (e.g. the large tail still on
 /// an old release) — the peer-driven `updateRequired` path (issue #132) can't.
@@ -44,7 +45,7 @@ final class VersionGate: ObservableObject {
     private var remoteStatus: Status = .ok
     private var peerStatus: Status = .ok
 
-    private let manifestURL = URL(string: "https://opendisplay.app/ios-version.json")!
+    private let manifestURL: URL? = nil  // SideLinker fork: remote policy endpoint intentionally disabled.
 
     /// The running app's marketing version. Local/dev builds ship "0.0.0"
     /// (the project.yml default), which we treat as "skip the gate".
@@ -55,6 +56,7 @@ final class VersionGate: ObservableObject {
     func check() async {
         let current = currentVersion
         guard current != "0.0.0" else { return }   // dev build — never gate
+        guard let manifestURL else { return }       // no SideLinker-owned remote policy endpoint yet
 
         var request = URLRequest(url: manifestURL)
         request.cachePolicy = .reloadRevalidatingCacheData
@@ -119,9 +121,9 @@ final class VersionGate: ObservableObject {
     }
 
     private static let requiredFallback =
-        "This version of OpenDisplay is no longer supported. Update from the App Store to keep using your second display."
+        "This version of SideLinker Direct is no longer supported. Update from the App Store to keep using your second display."
     private static let recommendedFallback =
-        "A newer version of OpenDisplay is available."
+        "A newer version of SideLinker Direct is available."
 }
 
 /// Numeric dotted-version compare (e.g. "0.10.0" older than "0.11.0"). Missing

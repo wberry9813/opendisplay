@@ -1,4 +1,4 @@
-// Draw moving bars on one OpenDisplay virtual screen at 60 Hz so video FPS
+// Draw moving bars on one SideLinker Direct virtual screen at 60 Hz so video FPS
 // measurements do not depend on whether the desktop happens to be idle.
 // Run on the sender: swift tools/quality/motion.swift [display-id]
 import AppKit
@@ -36,7 +36,7 @@ guard CGGetOnlineDisplayList(UInt32(ids.count), &ids, &count) == .success else {
     exit(1)
 }
 let openDisplayIDs = ids.prefix(Int(count)).filter {
-    CGDisplayVendorNumber($0) == 0x5043 && CGDisplayModelNumber($0) == 0x4F53
+    CGDisplayVendorNumber($0) == 0x534C && CGDisplayModelNumber($0) == 0x5344
 }
 let chosenID: CGDirectDisplayID
 if let requestedID, openDisplayIDs.contains(requestedID) {
@@ -45,7 +45,7 @@ if let requestedID, openDisplayIDs.contains(requestedID) {
     chosenID = openDisplayIDs[0]
 } else {
     let found = openDisplayIDs.map(String.init).joined(separator: ", ")
-    fputs("Expected one OpenDisplay screen; found IDs: \(found). Pass its ID.\n", stderr)
+    fputs("Expected one SideLinker Direct screen; found IDs: \(found). Pass its ID.\n", stderr)
     exit(1)
 }
 
@@ -55,7 +55,7 @@ guard let screen = NSScreen.screens.first(where: {
     ($0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID)
         == chosenID
 }) else {
-    fputs("OpenDisplay screen \(chosenID) has no NSScreen\n", stderr)
+    fputs("SideLinker Direct screen \(chosenID) has no NSScreen\n", stderr)
     exit(1)
 }
 
@@ -69,7 +69,7 @@ let view = MotionView(frame: NSRect(x: 0, y: 0, width: width, height: height))
 window.contentView = view
 window.level = .floating
 window.orderFrontRegardless()
-print("Animating OpenDisplay screen \(chosenID) at \(screen.frame). Press Control-C to stop.")
+print("Animating SideLinker Direct screen \(chosenID) at \(screen.frame). Press Control-C to stop.")
 fflush(stdout)
 let timer = Timer(timeInterval: 1.0 / 60, repeats: true) { _ in
     view.step += 13

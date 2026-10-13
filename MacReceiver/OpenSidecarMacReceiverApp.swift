@@ -1,4 +1,4 @@
-// OpenDisplay Receiver: the standalone "this Mac is a display" app (issues
+// SideLinker Direct Receiver: the standalone "this Mac is a display" app (issues
 // #82/#17). It is a separate bundle from the sender on purpose: the sender
 // needs macOS 14 for its capture/virtual-display stack, while receiving only
 // needs the decoder and a window, so this target keeps a much lower
@@ -30,7 +30,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     let updater = SPUStandardUpdaterController(
-        startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
+        startingUpdater: false, updaterDelegate: nil, userDriverDelegate: nil)
 
     private var panel: NSWindow?
 
@@ -74,7 +74,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let w = NSWindow(contentRect: NSRect(origin: .zero, size: ReceiverContentView.size),
                              styleMask: [.titled, .closable, .miniaturizable],
                              backing: .buffered, defer: false)
-            w.title = "OpenDisplay Receiver"
+            w.title = "SideLinker Direct Receiver"
             w.contentView = hosting
             w.isReleasedWhenClosed = false
             w.setFrameAutosaveName("ReceiverPanel")
@@ -91,7 +91,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let appItem = NSMenuItem()
         let appMenu = NSMenu()
-        appMenu.addItem(withTitle: "About OpenDisplay Receiver",
+        appMenu.addItem(withTitle: "About SideLinker Direct Receiver",
                         action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)),
                         keyEquivalent: "")
         appMenu.addItem(.separator())
@@ -99,10 +99,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         action: #selector(SPUStandardUpdaterController.checkForUpdates(_:)),
                         keyEquivalent: "").target = updater
         appMenu.addItem(.separator())
-        appMenu.addItem(withTitle: "Hide OpenDisplay Receiver",
+        appMenu.addItem(withTitle: "Hide SideLinker Direct Receiver",
                         action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         appMenu.addItem(.separator())
-        appMenu.addItem(withTitle: "Quit OpenDisplay Receiver",
+        appMenu.addItem(withTitle: "Quit SideLinker Direct Receiver",
                         action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         appItem.submenu = appMenu
         main.addItem(appItem)
@@ -146,7 +146,7 @@ struct ReceiverContentView: View {
                     .resizable()
                     .frame(width: 44, height: 44)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("OpenDisplay Receiver")
+                    Text("SideLinker Direct Receiver")
                         .font(.title3.bold())
                     Text("This Mac as an extra display for another Mac")
                         .font(.caption)
@@ -175,7 +175,7 @@ struct ReceiverContentView: View {
                 Spacer()
                 Button("Logs") { Log.revealInFinder() }
                     .controlSize(.small)
-                    .help("Reveal the OpenDisplay Receiver log files in Finder")
+                    .help("Reveal the SideLinker Direct Receiver log files in Finder")
                 if let updater {
                     CheckForUpdatesView(updater: updater)
                 }
