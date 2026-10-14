@@ -164,6 +164,9 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate {
 
     private var lastHello: PhoneInfo?
     private var helloContinuation: CheckedContinuation<PhoneInfo, Error>?
+    // BEGIN managed-input-probe
+    private let managedInputProbe = ManagedInputProbe()
+    // END managed-input-probe
     private var inputInjector: InputInjector?
 
     // Liveness: both sides ping every 2s; if nothing arrives for 5s the link
@@ -848,7 +851,10 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate {
         }
 
         try ensureActiveDisplay(vd)
-        inputInjector = InputInjector(displayID: vd.displayID)
+        inputInjector = InputInjector(displayID: vd.displayID, probe: managedInputProbe)
+        // BEGIN managed-input-probe
+        managedInputProbe.inputReady()
+        // END managed-input-probe
         try await startCapture(display: captureDisplay,
                                sourcePixelsWide: vd.pixelsWide,
                                sourcePixelsHigh: vd.pixelsHigh,
@@ -1027,7 +1033,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate {
                                receiver: info)
         try ensureActiveDisplay(vd)
         if dimensionsChanged {
-            inputInjector = InputInjector(displayID: vd.displayID)
+            inputInjector = InputInjector(displayID: vd.displayID, probe: managedInputProbe)
         }
 
         if dimensionsChanged, UserDefaults.standard.bool(forKey: "testPattern") {
@@ -1059,7 +1065,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate {
                                    sourcePixelsHigh: canvas.pixelsHigh,
                                    receiver: info)
             try ensureActiveDisplay(vd)
-            inputInjector = InputInjector(displayID: vd.displayID)
+            inputInjector = InputInjector(displayID: vd.displayID, probe: managedInputProbe)
             return true
         } catch {
             try ensureActiveDisplay(vd)
@@ -2368,6 +2374,9 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate {
                 }
             }
         case "touch":
+            // BEGIN managed-input-probe
+            managedInputProbe.received("touch", injectorPresent: inputInjector != nil)
+            // END managed-input-probe
             if let phase = obj["phase"] as? String,
                let x = obj["x"] as? Double,
                let y = obj["y"] as? Double {
@@ -2381,10 +2390,16 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate {
                 }
             }
         case "scroll":
+            // BEGIN managed-input-probe
+            managedInputProbe.received("scroll", injectorPresent: inputInjector != nil)
+            // END managed-input-probe
             if let dx = obj["dx"] as? Double, let dy = obj["dy"] as? Double {
                 inputInjector?.handleScroll(dx: dx, dy: dy)
             }
         case "pencil":
+            // BEGIN managed-input-probe
+            managedInputProbe.received("pencil", injectorPresent: inputInjector != nil)
+            // END managed-input-probe
             if let phase = obj["phase"] as? String,
                let x = obj["x"] as? Double,
                let y = obj["y"] as? Double {

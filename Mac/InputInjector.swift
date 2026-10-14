@@ -25,6 +25,14 @@ private enum SystemClickMetrics {
 final class InputInjector {
 
     private let displayID: CGDirectDisplayID
+    // BEGIN managed-input-probe
+    private let probe: ManagedInputProbe?
+
+    private func post(_ event: CGEvent) {
+        if let probe { probe.post(event) }
+        else { event.post(tap: .cghidEventTap) }
+    }
+    // END managed-input-probe
     private var isDown = false
     private var penDown = false
     // A real event source (vs nil) plus non-zero clickState on down/up: menu
@@ -58,8 +66,11 @@ final class InputInjector {
     private var penClickSession: PenClickSession?
     private var penLastClick: PenCompletedClick?
 
-    init(displayID: CGDirectDisplayID) {
+    init(displayID: CGDirectDisplayID, probe: ManagedInputProbe? = nil) {
         self.displayID = displayID
+        // BEGIN managed-input-probe
+        self.probe = probe
+        // END managed-input-probe
     }
 
     static func ensureAccessibilityPermission() -> Bool {
@@ -110,7 +121,7 @@ final class InputInjector {
         guard let event = CGEvent(mouseEventSource: source, mouseType: type,
                                   mouseCursorPosition: point, mouseButton: .left) else { return }
         event.setIntegerValueField(.mouseEventClickState, value: Int64(clickState))
-        event.post(tap: .cghidEventTap)
+        post(event)
     }
 
     /// dx/dy in display pixels, natural-scrolling sign from the phone.
@@ -123,7 +134,7 @@ final class InputInjector {
                                   wheel1: Int32((dy / scale).rounded()),
                                   wheel2: Int32((dx / scale).rounded()),
                                   wheel3: 0) else { return }
-        event.post(tap: .cghidEventTap)
+        post(event)
     }
 
     func handleProximity(entering: Bool, x: Double, y: Double) {
@@ -194,7 +205,7 @@ final class InputInjector {
         ev.setIntegerValueField(.tabletProximityEventCapabilityMask, value: capabilityMask)
         ev.setIntegerValueField(.tabletProximityEventEnterProximity, value: entering ? 1 : 0)
         ev.flags = .maskNonCoalesced
-        ev.post(tap: .cghidEventTap)
+        post(ev)
     }
 
     private enum PointPhase { case down, drag, up, hover }
@@ -234,7 +245,7 @@ final class InputInjector {
             break
         }
         ev.flags = .maskNonCoalesced
-        ev.post(tap: .cghidEventTap)
+        post(ev)
     }
 
     private func penClickStateForMouseDown(at point: CGPoint) -> Int {

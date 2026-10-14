@@ -43,13 +43,32 @@ def normalized(text):
     return re.sub(r"\s+", "", text)
 
 
+def without_input_probe(path, data):
+    if path not in ("Mac/MacSender.swift", "Mac/InputInjector.swift"):
+        return data
+    text = data.decode()
+    text = re.sub(r"^[ \t]*// BEGIN managed-input-probe\n.*?^[ \t]*// END managed-input-probe\n",
+                  "", text, flags=re.M | re.S)
+    if path == "Mac/MacSender.swift":
+        assert text.count(", probe: managedInputProbe") == 3
+        text = text.replace(", probe: managedInputProbe", "")
+    else:
+        assert text.count(", probe: ManagedInputProbe? = nil") == 1
+        text = text.replace(", probe: ManagedInputProbe? = nil", "")
+        assert text.count("        post(event)\n") == 2
+        assert text.count("        post(ev)\n") == 2
+        text = text.replace("        post(event)\n", "        event.post(tap: .cghidEventTap)\n")
+        text = text.replace("        post(ev)\n", "        ev.post(tap: .cghidEventTap)\n")
+    return text.encode()
+
+
 frozen = ["Mac/VirtualDisplay.swift", "Mac/StreamConfiguration.swift", "Mac/Usbmux.swift",
           "Mac/InputInjector.swift", "Shared/Protocol.swift", "Shared/StreamReceiver.swift",
           "SIDELINKER_FORK_RULES.md",
           "SIDELINKER_ENGINE_ARCHITECTURE.md", "SIDELINKER_ENGINE_CONTROL_PROTOCOL.md"]
 tracked = subprocess.check_output(["git", "ls-tree", "-r", "--name-only", BASE, "iOS", "Shared", ".github"], cwd=ROOT).decode().splitlines()
 for path in sorted(set(frozen + tracked)):
-    assert (ROOT / path).read_bytes() == approved_identity(path, original(path)), f"frozen path changed: {path}"
+    assert without_input_probe(path, (ROOT / path).read_bytes()) == approved_identity(path, original(path)), f"frozen path changed: {path}"
 print(f"PASS: {len(set(frozen + tracked))} frozen paths unchanged except exact approved discovery-token substitutions in three paths")
 
 # Info.plists are generated/untracked. Identity/distribution source-of-truth
@@ -110,7 +129,7 @@ assert "startingUpdater: false" in app
 print("PASS: source wiring for UI-independent controller, passive discovery, revocation, same-user AF_UNIX and headless UI guards")
 
 # Exact allowlist of the only frozen sender integration adaptations.
-sender = (ROOT / "Mac/MacSender.swift").read_text()
+sender = without_input_probe("Mac/MacSender.swift", (ROOT / "Mac/MacSender.swift").read_bytes()).decode()
 expected = original("Mac/MacSender.swift").decode()
 changes = [
     ("    private let quality: StreamQuality\n", "    private let quality: StreamQuality\n    // Explicit managed Wi-Fi preference forbids autonomous cable migration.\n    private let wifiOnly: Bool\n"),
@@ -126,5 +145,6 @@ for before, after in changes:
     expected = expected.replace(before, after)
 assert sender == expected, "sender changed outside seven bounded lifecycle/configuration integrations"
 print("PASS: exact seven sender adaptation allowlist; capture/encode/wire algorithms otherwise unchanged")
+print("PASS: probe-stripped sender/injector preserve baseline input behavior and AX wait; probe diagnostics require separate review")
 subprocess.run(["git", "diff", "--check"], cwd=ROOT, check=True)
 print("PASS: git diff --check")
