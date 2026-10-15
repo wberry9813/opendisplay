@@ -244,6 +244,9 @@ class DirectEngineController: ObservableObject {
     }
 
     func receivedUSBDevices(_ devices: [UsbmuxDevice]) {
+        #if DEBUG
+        diagnoseUSB(devices)
+        #endif
         let detached = Set(usbDevices.map(\.udid)).subtracting(devices.map(\.udid))
         usbDevices = devices
         failover(detachedUDIDs: detached)
@@ -251,7 +254,36 @@ class DirectEngineController: ObservableObject {
         publishSnapshots()
     }
 
+    #if DEBUG
+    private func diagnoseUSB(_ devices: [UsbmuxDevice]) {
+        DirectIdentityDiagnostics.event("helper.usbmux-list", ["count": String(devices.count),
+            "udid_fps": devices.map { DirectIdentityDiagnostics.comparisonFingerprint($0.udid) }.sorted().joined(separator: ",")], key: "usb-list")
+        for device in devices {
+            DirectIdentityDiagnostics.event("helper.usbmux-observation", ["udid_fp": DirectIdentityDiagnostics.fingerprint(device.udid),
+                "trimmed_casefold_fp": DirectIdentityDiagnostics.comparisonFingerprint(device.udid),
+                "name_fp": DirectIdentityDiagnostics.fingerprint(device.name)], key: "usb:\(DirectIdentityDiagnostics.fingerprint(device.udid))")
+        }
+    }
+    private func diagnoseBonjour(_ results: [NWBrowser.Result]) {
+        DirectIdentityDiagnostics.event("helper.bonjour-list", ["count": String(results.count),
+            "service_fps": results.map { DirectIdentityDiagnostics.fingerprint(serviceName(of: $0)) }.sorted().joined(separator: ",")], key: "bonjour-list")
+        for result in results {
+            let name = DirectIdentityDiagnostics.fingerprint(serviceName(of: result))
+            DirectIdentityDiagnostics.event("helper.bonjour-observation", ["service_fp": name,
+                "txt_id_present": String(txtID(of: result) != nil), "install_fp": DirectIdentityDiagnostics.fingerprint(txtID(of: result)),
+                "trimmed_casefold_fp": DirectIdentityDiagnostics.comparisonFingerprint(txtID(of: result))], key: "bonjour:\(name)")
+        }
+    }
+    func diagnoseCurrentDiscovery() {
+        diagnoseUSB(usbDevices)
+        diagnoseBonjour(discovered)
+    }
+    #endif
+
     func receivedBonjourResults(_ results: [NWBrowser.Result]) {
+        #if DEBUG
+        diagnoseBonjour(results)
+        #endif
         discovered = results
         endSessionsWhoseServiceVanished()
         autoConnect()
@@ -275,8 +307,15 @@ class DirectEngineController: ObservableObject {
     /// this USB device announced in a (past or present) hello. Missing evidence
     /// remains unresolved; a display name cannot establish physical identity.
     private func sameDevice(_ result: NWBrowser.Result, _ device: UsbmuxDevice) -> Bool {
-        ReceiverSnapshot.sameDevice(serviceInstallID: txtID(of: result),
-                                    usbInstallID: installIDByUDID[device.udid])
+        let matches = ReceiverSnapshot.sameDevice(serviceInstallID: txtID(of: result), usbInstallID: installIDByUDID[device.udid])
+        #if DEBUG
+        let usb = DirectIdentityDiagnostics.fingerprint(device.udid), service = DirectIdentityDiagnostics.fingerprint(serviceName(of: result))
+        DirectIdentityDiagnostics.event("helper.same-device", ["udid_fp": usb, "service_fp": service,
+            "txt_install_fp": DirectIdentityDiagnostics.fingerprint(txtID(of: result)),
+            "verified_install_fp": DirectIdentityDiagnostics.fingerprint(installIDByUDID[device.udid]),
+            "result": String(matches), "reason": matches ? "verified-install-match" : "missing-or-different-verified-install"], key: "pair:\(usb):\(service)")
+        #endif
+        return matches
     }
 
     /// The session (over either transport) already serving this USB device.
@@ -406,7 +445,7 @@ class DirectEngineController: ObservableObject {
             guard let verified = installIDByUDID[device.udid],
                   verified == (session.deviceID ?? advertised) else { return }
         }
-        Log.info("cable attached for \(session.id) — migrating to USB")
+        Log.info("cable attached for route fingerprint \(DirectIdentityDiagnostics.fingerprint(session.id)) — migrating to USB")
         session.onUSB = true
         session.usbUDID = device.udid
         // A transport choice is not identity evidence; only a USB hello may learn a mapping.
@@ -422,7 +461,7 @@ class DirectEngineController: ObservableObject {
         for session in sessions where session.onUSB {
             guard let udid = session.usbUDID, detachedUDIDs.contains(udid),
                   let result = wifiService(for: session) else { continue }
-            Log.info("cable detached for \(session.id) — failing over to WiFi")
+            Log.info("cable detached for route fingerprint \(DirectIdentityDiagnostics.fingerprint(session.id)) — failing over to WiFi")
             session.onUSB = false
             session.wifiServiceName = serviceName(of: result)
             session.sender.switchTransport(to: .tcp(result.endpoint))
@@ -482,7 +521,7 @@ class DirectEngineController: ObservableObject {
                 || (txtID(of: result).map { usbSessionIDs.contains($0) } ?? false)
                 || (serviceName(of: result).map { cabledNames.contains($0) } ?? false)
             if duplicate {
-                Log.info("two sessions for one device — keeping the cable, dropping \(s.id)")
+                Log.info("two sessions for one device — keeping the cable, dropping route fingerprint \(DirectIdentityDiagnostics.fingerprint(s.id))")
                 end(s)
             }
         }
@@ -559,7 +598,7 @@ class DirectEngineController: ObservableObject {
         }
         if let covering {
             guard userInitiated else { return }
-            Log.info("user chose \(id) — taking over from \(covering.id)")
+            Log.info("user chose route fingerprint \(DirectIdentityDiagnostics.fingerprint(id)) — taking over from \(DirectIdentityDiagnostics.fingerprint(covering.id))")
             end(covering)
         }
 
@@ -609,7 +648,7 @@ class DirectEngineController: ObservableObject {
                         || text.hasPrefix("Capture stopped") || text.hasPrefix("Preparing") {
                 session.lifecycle = "connecting"
             }
-            Log.info("status[\(id)]: \(text)")
+            Log.info("status[route fingerprint \(DirectIdentityDiagnostics.fingerprint(id))]: \(text)")
             self.publishSnapshots()
         }
         sender.onHello = { [weak self, weak session] info in
@@ -621,7 +660,7 @@ class DirectEngineController: ObservableObject {
             session.helloArrived(info)
             let power = (info.power ?? []).compactMap(PowerAction.init(rawValue:))
             if power != session.powerActions {
-                Log.info("session \(session.id) power actions: "
+                Log.info("session fingerprint \(DirectIdentityDiagnostics.fingerprint(session.id)) power actions: "
                     + (power.isEmpty ? "none" : power.map(\.rawValue).joined(separator: ",")))
                 session.powerActions = power
             }
@@ -645,7 +684,7 @@ class DirectEngineController: ObservableObject {
             // session fully (virtual display + capture + indicator). No
             // transport fallback — reconnecting is the user's call.
             guard let self, let session, self.isCurrent(session) else { return }
-            Log.info("device disconnected — session \(session.id) stopped")
+            Log.info("device disconnected — session fingerprint \(DirectIdentityDiagnostics.fingerprint(session.id)) stopped")
             self.end(session)
         }
         sender.onPeerSleeping = { [weak self, weak session] in
@@ -659,7 +698,7 @@ class DirectEngineController: ObservableObject {
             if session.onUSB { target = .usb(udid: session.usbUDID) }
             else if let result = self.wifiService(for: session) { target = .wifi(result) }
             else { target = session.target }
-            Log.info("session \(session.id) asleep — display down, waiting for wake")
+            Log.info("session fingerprint \(DirectIdentityDiagnostics.fingerprint(session.id)) asleep — display down, waiting for wake")
             self.end(session)
             self.connect(to: target, awaitingWake: true)
         }
@@ -668,7 +707,7 @@ class DirectEngineController: ObservableObject {
             // the in-app Disconnect, so it also opts the device out of
             // auto-connect (or the next browse event would resurrect it).
             guard let self, let session, self.isCurrent(session) else { return }
-            Log.info("session \(session.id) capture stopped via the system UI — honoring as disconnect")
+            Log.info("session fingerprint \(DirectIdentityDiagnostics.fingerprint(session.id)) capture stopped via the system UI — honoring as disconnect")
             self.disconnect(session)
         }
         sender.onDisplayIdentityBumped = { [weak session] totalOffset in
@@ -677,7 +716,7 @@ class DirectEngineController: ObservableObject {
             // re-discovers the same poisoned identity within one session.
             guard let session else { return }
             UserDefaults.standard.set(Int(totalOffset), forKey: Self.identityOffsetKey(for: session.id))
-            Log.info("display identity for \(session.id) moved to offset \(totalOffset) — "
+            Log.info("display identity for route fingerprint \(DirectIdentityDiagnostics.fingerprint(session.id)) moved to offset \(totalOffset) — "
                 + "macOS saved hostile state for the old one")
         }
         sender.onTransportPath = { [weak session] wired in
@@ -688,7 +727,7 @@ class DirectEngineController: ObservableObject {
             // waits around. Reopening the app is a fresh start handled by
             // the normal discovery/auto-connect paths.
             guard let self, let session, self.isCurrent(session) else { return }
-            Log.info("session \(session.id) closed by the receiver — ending")
+            Log.info("session fingerprint \(DirectIdentityDiagnostics.fingerprint(session.id)) closed by the receiver — ending")
             self.end(session)
         }
         sessions.append(session)
@@ -767,7 +806,13 @@ class DirectEngineController: ObservableObject {
     }
 
     func receiverSnapshots() -> [[String: Any]] {
-        ReceiverSnapshot.deduplicate(deviceEntries.map { entry in
+        #if DEBUG
+        let mappings = installIDByUDID.map { "\(DirectIdentityDiagnostics.fingerprint($0.key))->\(DirectIdentityDiagnostics.fingerprint($0.value))" }.sorted().joined(separator: ",")
+        let comparisons = installIDByUDID.map { "\(DirectIdentityDiagnostics.comparisonFingerprint($0.key))->\(DirectIdentityDiagnostics.comparisonFingerprint($0.value))" }.sorted().joined(separator: ",")
+        DirectIdentityDiagnostics.event("helper.verified-map", ["pairs_raw": mappings, "pairs_casefold": comparisons,
+            "count": String(installIDByUDID.count)], key: "verified-map")
+        #endif
+        return ReceiverSnapshot.deduplicate(deviceEntries.map { entry in
             var transports: [String] = []
             if entry.usbTarget != nil { transports.append("usb") }
             if entry.wifiTarget != nil { transports.append("wifi") }
@@ -790,6 +835,16 @@ class DirectEngineController: ObservableObject {
             if let metadata = live?.receiverMetadata {
                 for (key, value) in metadata { row[key] = value }
             }
+            #if DEBUG
+            let route = DirectIdentityDiagnostics.fingerprint(receiver)
+            DirectIdentityDiagnostics.event("helper.snapshot-row", ["route_fp": route,
+                "install_fp": DirectIdentityDiagnostics.fingerprint(receiver.hasPrefix("install:") ? String(receiver.dropFirst(8)) : nil),
+                "install_casefold_fp": DirectIdentityDiagnostics.comparisonFingerprint(receiver.hasPrefix("install:") ? String(receiver.dropFirst(8)) : nil),
+                "usb_udid_fps": udids.map { DirectIdentityDiagnostics.comparisonFingerprint($0) }.sorted().joined(separator: ","),
+                "name_fp": DirectIdentityDiagnostics.fingerprint(entry.name),
+                "device_kind_fp": DirectIdentityDiagnostics.fingerprint(row["deviceKind"] as? String),
+                "transports": transports.sorted().joined(separator: ",")], key: "snapshot:\(route)")
+            #endif
             return row
         })
     }
@@ -797,6 +852,10 @@ class DirectEngineController: ObservableObject {
     private func recordIdentity(_ installID: String, forUSB udid: String) {
         guard !installID.isEmpty, !udid.isEmpty else { return }
         installIDByUDID[udid] = installID
+        #if DEBUG
+        DirectIdentityDiagnostics.event("helper.verified-usb-hello", ["udid_fp": DirectIdentityDiagnostics.fingerprint(udid),
+            "install_fp": DirectIdentityDiagnostics.fingerprint(installID)], key: "hello:\(DirectIdentityDiagnostics.fingerprint(udid))")
+        #endif
     }
 
     private func receiverID(for entry: DeviceEntry) -> String {

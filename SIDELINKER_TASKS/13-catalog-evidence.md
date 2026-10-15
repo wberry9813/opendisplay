@@ -88,3 +88,29 @@ including the exact-method managed Wi-Fi migration regression. `git diff --check
 Media/input, receiver wire protocol, helper identity, signing/package layout and licensing boundary
 remain unchanged. No app/helper launch, live service/TCC/settings or hardware actions. Re-review and
 Manual Acceptance remain PENDING.
+
+## Task13 identity fingerprint capture companion — 2026-10-15
+
+From product documentation head `33ee6933a1652bcac8b302ea51740670460205da`, same sole writer,
+GUARDED / IMMEDIATE. Operator reports Better/Direct both connect; the unresolved issue is Native /
+Direct correlation, not reachability. No new BLE/HTTP/wake work is activated.
+
+Development-only OSLog subsystem `com.dmer.SideLinker.DirectEngine`, category `identity`, prefix
+`SLIdentity v1`: USB observations, Bonjour TXT install evidence, verified mappings/USB hello, pair
+decisions, snapshot rows and snapshot grouping. All hardware/install/name/route values are stable
+SHA-256-prefix fingerprints. Casefold fingerprints are diagnostic comparison aids, never policy.
+Identical facts are coalesced in bounded in-memory diagnostic storage, not persisted product state.
+Normal usbmux/controller logs that contained raw route/UDID strings now use fingerprints too.
+
+On the existing subscribe operation, DEBUG clears only diagnostic coalescing and logs the current
+discovery inventory before the existing publishSnapshots. This ensures a fresh operator capture gets
+facts from an already-running helper; no discovery call, wire field, policy, session or permission action
+is added. Discovery/migration/media/input behavior remains unchanged. No GPL source moved into the app.
+
+Verification root: `/Volumes/SSD240/Dev/SideLinker-artifacts/task13-connection-modes/identity-ui/`.
+Ignored project regenerated via generate.sh for the new file. Same arm64 Debug engine build and
+selected hostless commands as above, using `identity-ui/EngineDerivedData`: BUILD SUCCEEDED;
+TEST SUCCEEDED, **17 tests in two suites**, including stable/private diagnostic fingerprint fixtures.
+Product full focused suite and exact-method migration fixtures PASS. git diff --check PASS.
+No helper/app launch, live service/BTM/TCC/settings/hardware actions by writer. Runtime identity bridge
+still requires operator fingerprints; no name/shape heuristic, review PASS, waiver or acceptance claimed.

@@ -238,7 +238,7 @@ final class UsbmuxDeviceWatcher {
             guard !attached.isEmpty else { return }
             for device in attached {
                 devices[device.deviceID] = device
-                Log.info("usbmux initial device: \(device.udid)")
+                Log.info("usbmux initial device fingerprint: \(DirectIdentityDiagnostics.fingerprint(device.udid))")
                 resolveName(deviceID: device.deviceID)
             }
             publish()
@@ -277,13 +277,13 @@ final class UsbmuxDeviceWatcher {
         case "Attached":
             guard let device = Usbmux.device(
                 fromProperties: message["Properties"] as? [String: Any] ?? [:]) else { return }
-            Log.info("usbmux attached: \(device.udid)")
+            Log.info("usbmux attached fingerprint: \(DirectIdentityDiagnostics.fingerprint(device.udid))")
             devices[deviceID] = device
             publish()
             resolveName(deviceID: deviceID)
         case "Detached":
             if let device = devices.removeValue(forKey: deviceID) {
-                Log.info("usbmux detached: \(device.udid)")
+                Log.info("usbmux detached fingerprint: \(DirectIdentityDiagnostics.fingerprint(device.udid))")
                 publish()
             }
         default:

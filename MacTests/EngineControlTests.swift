@@ -2,6 +2,12 @@ import Foundation
 import Testing
 
 struct EngineControlTests {
+    @Test func identityDiagnosticFingerprintsAreStableAndNotRaw() {
+        #expect(DirectIdentityDiagnostics.fingerprint("abc") == "ba7816bf8f01cfea")
+        #expect(DirectIdentityDiagnostics.fingerprint(nil) == "none")
+        #expect(DirectIdentityDiagnostics.comparisonFingerprint(" 00008020-ABC\n") == DirectIdentityDiagnostics.fingerprint("00008020-abc"))
+        #expect(!DirectIdentityDiagnostics.fingerprint("private-serial").contains("private-serial"))
+    }
     @Test func fragmentedAndCoalescedFrames() throws {
         let packet = try EngineControlFramer.encode(["v": 1, "kind": "request", "id": "a", "method": "hello"])
         var framer = EngineControlFramer()

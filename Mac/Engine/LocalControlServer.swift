@@ -224,7 +224,13 @@ final class LocalControlServer {
                 throw EngineControlError(code: "protocol.unknownMethod", message: "Unsupported method")
             }
             send(["v": 1, "kind": "response", "id": request.id, "ok": true, "result": result])
-            if request.method == "subscribe" { controller.publishSnapshots() }
+            if request.method == "subscribe" {
+                #if DEBUG
+                DirectIdentityDiagnostics.beginInspection()
+                controller.diagnoseCurrentDiscovery()
+                #endif
+                controller.publishSnapshots()
+            }
             if subscribed, request.method == "listReceivers" || request.method == "requestAccessibility" {
                 send(["v": 1, "kind": "event", "event": "permissionState", "payload": controller.permissionSnapshot()])
             }

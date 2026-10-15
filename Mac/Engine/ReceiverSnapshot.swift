@@ -18,6 +18,12 @@ enum ReceiverSnapshot {
                 existing["transports"] = transports.sorted()
                 existing["usbUDIDs"] = Set(existing["usbUDIDs"] as? [String] ?? [])
                     .union(row["usbUDIDs"] as? [String] ?? []).sorted()
+                #if DEBUG
+                let route = DirectIdentityDiagnostics.fingerprint(id)
+                DirectIdentityDiagnostics.event("helper.snapshot-group", ["route_fp": route,
+                    "reason": "same-receiver-id", "transports": transports.sorted().joined(separator: ","),
+                    "usb_udid_fps": (existing["usbUDIDs"] as? [String] ?? []).map { DirectIdentityDiagnostics.comparisonFingerprint($0) }.sorted().joined(separator: ",")], key: "snapshot-group:\(route)")
+                #endif
                 for (key, value) in row where existing[key] == nil { existing[key] = value }
                 merged[id] = existing
             } else { merged[id] = row }
