@@ -266,12 +266,11 @@ class DirectEngineController: ObservableObject {
     }
 
     /// Same hardware? Strong match: the service's install id equals the id
-    /// this USB device announced in a (past or present) hello. Fallback for
-    /// old receivers: lockdown device name equals the service name.
+    /// this USB device announced in a (past or present) hello. Missing evidence
+    /// remains unresolved; a display name cannot establish physical identity.
     private func sameDevice(_ result: NWBrowser.Result, _ device: UsbmuxDevice) -> Bool {
         ReceiverSnapshot.sameDevice(serviceInstallID: txtID(of: result),
-                                    usbInstallID: installIDByUDID[device.udid],
-                                    serviceName: serviceName(of: result), usbName: device.name)
+                                    usbInstallID: installIDByUDID[device.udid])
     }
 
     /// The session (over either transport) already serving this USB device.
@@ -762,6 +761,15 @@ class DirectEngineController: ObservableObject {
             let live = session(for: entry)
             var row: [String: Any] = ["receiverID": receiverID(for: entry), "name": entry.name,
                     "deviceKind": live?.deviceKind ?? "unknown", "transports": transports]
+            // Facts only: expose already-known usbmux identity, not discovery or product policy.
+            var udids = Set<String>()
+            if case .usb(let udid?) = entry.usbTarget { udids.insert(udid) }
+            let receiver = receiverID(for: entry)
+            if receiver.hasPrefix("install:") {
+                let install = String(receiver.dropFirst(8))
+                for (udid, knownInstall) in installIDByUDID where knownInstall == install { udids.insert(udid) }
+            }
+            row["usbUDIDs"] = udids.sorted()
             if let version = live?.protocolVersion {
                 row["protocolVersion"] = version
                 row["compatible"] = version >= WireProtocol.minSupportedPeer
@@ -805,6 +813,13 @@ class DirectEngineController: ObservableObject {
         // Preflight only: never opens permission UI in managed mode.
         ["screenRecording": CGPreflightScreenCaptureAccess() ? "granted" : "unknown",
          "accessibility": AXIsProcessTrusted() ? "granted" : "unknown"]
+    }
+
+    /// Explicit local user action, executed in the engine process/TCC principal, never discovery.
+    func requestAccessibility() {
+        _ = AXIsProcessTrustedWithOptions([
+            kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true
+        ] as CFDictionary)
     }
 
     func publishSnapshots() {

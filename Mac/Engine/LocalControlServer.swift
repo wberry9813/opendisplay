@@ -204,6 +204,7 @@ final class LocalControlServer {
                           "capabilities": ["receiverDiscovery": true, "usb": true, "wifi": true, "extend": true, "input": true]]
             case "subscribe": subscribed = true
             case "listReceivers": result = ["receivers": controller.receiverSnapshots()]
+            case "requestAccessibility": controller.requestAccessibility()
             case "startSession":
                 guard let receiverID = request.params["receiverID"] as? String,
                       !receiverID.isEmpty, request.params["mode"] as? String == "extend",
@@ -224,6 +225,9 @@ final class LocalControlServer {
             }
             send(["v": 1, "kind": "response", "id": request.id, "ok": true, "result": result])
             if request.method == "subscribe" { controller.publishSnapshots() }
+            if subscribed, request.method == "listReceivers" || request.method == "requestAccessibility" {
+                send(["v": 1, "kind": "event", "event": "permissionState", "payload": controller.permissionSnapshot()])
+            }
             if request.method == "shutdown" { finish() }
         } catch let error as EngineControlError { sendError(id: id, error: error) }
         catch { sendError(id: id, error: EngineControlError(code: "protocol.invalidMessage", message: "Invalid JSON request")) }

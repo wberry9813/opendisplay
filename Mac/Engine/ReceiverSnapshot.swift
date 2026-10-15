@@ -1,10 +1,10 @@
 import Foundation
 
 enum ReceiverSnapshot {
-    static func sameDevice(serviceInstallID: String?, usbInstallID: String?,
-                           serviceName: String?, usbName: String?) -> Bool {
+    static func sameDevice(serviceInstallID: String?, usbInstallID: String?) -> Bool {
         if let serviceInstallID, let usbInstallID { return serviceInstallID == usbInstallID }
-        return serviceName != nil && serviceName == usbName
+        // Name equality cannot establish physical identity (two iPads may share a name).
+        return false
     }
     /// One install may advertise several services/interfaces. Identity evidence,
     /// never a display name alone, combines already-correlated transport rows.
@@ -16,6 +16,8 @@ enum ReceiverSnapshot {
                 let transports = Set(existing["transports"] as? [String] ?? [])
                     .union(row["transports"] as? [String] ?? [])
                 existing["transports"] = transports.sorted()
+                existing["usbUDIDs"] = Set(existing["usbUDIDs"] as? [String] ?? [])
+                    .union(row["usbUDIDs"] as? [String] ?? []).sorted()
                 for (key, value) in row where existing[key] == nil { existing[key] = value }
                 merged[id] = existing
             } else { merged[id] = row }

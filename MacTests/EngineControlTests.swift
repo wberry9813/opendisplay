@@ -59,19 +59,18 @@ struct EngineControlTests {
     }
 
     @Test func installIdentityDedupeNotNameDedupe() {
-        #expect(!ReceiverSnapshot.sameDevice(serviceInstallID: "1", usbInstallID: "2",
-                                             serviceName: "iPad", usbName: "iPad"))
-        #expect(ReceiverSnapshot.sameDevice(serviceInstallID: "1", usbInstallID: "1",
-                                            serviceName: "Renamed", usbName: "Old"))
-        #expect(ReceiverSnapshot.sameDevice(serviceInstallID: nil, usbInstallID: nil,
-                                            serviceName: "iPad", usbName: "iPad"))
+        #expect(!ReceiverSnapshot.sameDevice(serviceInstallID: "1", usbInstallID: "2"))
+        #expect(ReceiverSnapshot.sameDevice(serviceInstallID: "1", usbInstallID: "1"))
+        #expect(!ReceiverSnapshot.sameDevice(serviceInstallID: nil, usbInstallID: nil))
+        #expect(!ReceiverSnapshot.sameDevice(serviceInstallID: "1", usbInstallID: nil))
         let rows: [[String: Any]] = [
-            ["receiverID": "install:1", "name": "iPad", "transports": ["usb"]],
+            ["receiverID": "install:1", "name": "iPad", "transports": ["usb"], "usbUDIDs": ["udid-1"]],
             ["receiverID": "install:1", "name": "Renamed", "transports": ["wifi"]],
             ["receiverID": "install:2", "name": "iPad", "transports": ["wifi"]]]
         let snapshot = ReceiverSnapshot.deduplicate(rows)
         #expect(snapshot.count == 2)
         #expect(snapshot[0]["transports"] as? [String] == ["usb", "wifi"])
+        #expect(snapshot[0]["usbUDIDs"] as? [String] == ["udid-1"])
         #expect(snapshot[1]["receiverID"] as? String == "install:2")
     }
 }
@@ -94,6 +93,7 @@ struct EngineControllerTests {
         #expect(engine.sessions.isEmpty)
         #expect(engine.grant.active == nil)
         #expect(engine.receiverSnapshots().count == 1)
+        #expect(engine.receiverSnapshots().first?["usbUDIDs"] as? [String] == [devices[0].udid])
     }
 
     @Test func explicitStartStopRejectsStaleSleepHelloDisconnectAndTimers() async throws {
