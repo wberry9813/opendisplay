@@ -54,3 +54,37 @@ Product harness additionally compiles production snapshot union/identity methods
 helper-owned request source boundary; it does not prove real TCC attribution or permission UX.
 
 Independent review and real-device Manual Acceptance remain PENDING. No release approval.
+
+## Reviewed identity repair — 2026-10-15
+
+Operator-supplied independent verdict on `f8b8a3a4bfefeac973d6444bd0a1226f457b4b95`:
+**CHANGES REQUIRED**, same-name managed migration could manufacture a USB/install mapping.
+This repair requires focused independent re-review; no review PASS or Manual Acceptance is claimed.
+
+- Managed USB/Wi-Fi association and Wi-Fi failover no longer use display-name fallback. Managed
+  upgrade additionally verifies the existing USB/install association against the session peer before
+  changing transport. Choosing a transport never writes identity evidence, in either mode.
+- Only a hello on the live USB route records USB/install evidence. A Wi-Fi hello cannot rewrite the
+  original USB target's identity. The earlier unreleased `installIDByUDID` cache could contain guessed
+  associations, so it is not imported as verified data; `verifiedUSBInstallIDByUDID` is rebuilt from
+  actual USB hellos. No live settings reset/migration command was performed. An injected defaults
+  suite isolates hostless persistence tests; production defaults remain standard.
+- The product focused harness compiles the exact association/upgrade/recovery/snapshot method bodies
+  with value-only Wi-Fi discovery and sender fixtures. Against the reviewed code the active Wi-Fi A /
+  distinct same-name USB B case failed three checks: migration, mapping contamination and false strong
+  snapshot evidence. It now passes, along with independently verified same-device migration. This is
+  hostless synthetic policy evidence, not real network migration. NWBrowser.Result has no public
+  initializer, so no real browser or private initializer is used to manufacture test discovery.
+- A new actual-controller hostless test models A's Wi-Fi continuation after a verified USB hello,
+  rejects namesake B and the old untrusted cache, verifies Wi-Fi cannot rewrite USB evidence, and
+  retains verified A migration. The injected sender is stopped before transport policy changes,
+  preventing fake USB dialing or display creation.
+
+Same engine build/test commands above, with DerivedData/log root changed to
+`/Volumes/SSD240/Dev/SideLinker-artifacts/task13-connection-modes/review-repair/`.
+Engine arm64 Debug **BUILD SUCCEEDED** (`engine-build.log`); hostless **TEST SUCCEEDED**, **16 tests
+in two suites** (`engine-tests.log`). Product full focused suite **PASS** (`focused-repair-final.log`),
+including the exact-method managed Wi-Fi migration regression. `git diff --check` PASS.
+Media/input, receiver wire protocol, helper identity, signing/package layout and licensing boundary
+remain unchanged. No app/helper launch, live service/TCC/settings or hardware actions. Re-review and
+Manual Acceptance remain PENDING.

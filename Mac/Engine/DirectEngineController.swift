@@ -128,6 +128,8 @@ class DirectEngineController: ObservableObject {
     private var managedInstallID: String?
     private let startSender: (MacSender) async throws -> Void
     private let screenPermission: () -> Bool
+    private let identityDefaults: UserDefaults
+    static let verifiedIdentityKey = "verifiedUSBInstallIDByUDID"
     var onEvent: ((String, [String: Any]) -> Void)?
 
     @Published var sessions: [DeviceSession] = []
@@ -173,9 +175,10 @@ class DirectEngineController: ObservableObject {
     // same hardware is recognized across transports even when the user
     // renamed the advertised service. @Published so the device list regroups
     // the moment an identity is learned.
-    @Published private var installIDByUDID: [String: String] =
-        UserDefaults.standard.dictionary(forKey: "installIDByUDID") as? [String: String] ?? [:] {
-        didSet { UserDefaults.standard.set(installIDByUDID, forKey: "installIDByUDID") }
+    // The earlier unreleased cache could contain name-inferred mappings. Do not import it as
+    // verified evidence. This disposable cache is populated only by an actual USB hello below.
+    @Published private var installIDByUDID: [String: String] = [:] {
+        didSet { identityDefaults.set(installIDByUDID, forKey: Self.verifiedIdentityKey) }
     }
     private let autoConnectEnabled = UserDefaults.standard.object(forKey: "autostart") == nil
         || UserDefaults.standard.bool(forKey: "autostart")
@@ -206,10 +209,13 @@ class DirectEngineController: ObservableObject {
 
     init(managed: Bool = false, discover: Bool = true,
          screenPermission: @escaping () -> Bool = CGPreflightScreenCaptureAccess,
-         startSender: @escaping (MacSender) async throws -> Void = { try await $0.start() }) {
+         startSender: @escaping (MacSender) async throws -> Void = { try await $0.start() },
+         identityDefaults: UserDefaults = .standard) {
         self.managed = managed
         self.screenPermission = screenPermission
         self.startSender = startSender
+        self.identityDefaults = identityDefaults
+        self.installIDByUDID = identityDefaults.dictionary(forKey: Self.verifiedIdentityKey) as? [String: String] ?? [:]
         if managed { mode = .extend; port = "9000" }
         guard discover else { return }
         startBrowsing()
@@ -283,6 +289,7 @@ class DirectEngineController: ObservableObject {
             if let id = installIDByUDID[device.udid], let peer = s.deviceID ?? txtID(of: result) {
                 return peer == id
             }
+            if managed { return false }
             return serviceName(of: result) != nil && device.name == serviceName(of: result)
         }
     }
@@ -299,6 +306,7 @@ class DirectEngineController: ObservableObject {
             if let id = txtID(of: result), s.deviceID == id { return true }
             if let udid, let device = usbDevices.first(where: { $0.udid == udid }),
                sameDevice(result, device) { return true }
+            if managed { return false }
             // Browse results routinely lack their TXT record and the USB
             // device is gone after a failover — the service name is then
             // the only remaining link to the session.
@@ -392,12 +400,16 @@ class DirectEngineController: ObservableObject {
     private func upgradeToUSB(_ session: DeviceSession, device: UsbmuxDevice) {
         guard !managed || grant.preference != .wifi else { return }
         guard !session.onUSB, let portNum = UInt16(port) else { return }
+        if managed {
+            let advertised: String?
+            if case .wifi(let result) = session.target { advertised = txtID(of: result) } else { advertised = nil }
+            guard let verified = installIDByUDID[device.udid],
+                  verified == (session.deviceID ?? advertised) else { return }
+        }
         Log.info("cable attached for \(session.id) — migrating to USB")
         session.onUSB = true
         session.usbUDID = device.udid
-        // The match may have been by name only — pin the strong identity so
-        // future matching (and the next launch) recognizes the pair.
-        if let id = session.deviceID { installIDByUDID[device.udid] = id }
+        // A transport choice is not identity evidence; only a USB hello may learn a mapping.
         session.sender.switchTransport(to: .usb(udid: device.udid, port: portNum))
     }
 
@@ -443,6 +455,7 @@ class DirectEngineController: ObservableObject {
             if let id = txtID(of: result), let deviceID = session.deviceID {
                 return id == deviceID
             }
+            if managed { return false }
             let name = serviceName(of: result)
             return name != nil && (name == session.wifiServiceName || name == session.name)
         }
@@ -612,7 +625,7 @@ class DirectEngineController: ObservableObject {
                     + (power.isEmpty ? "none" : power.map(\.rawValue).joined(separator: ",")))
                 session.powerActions = power
             }
-            if case .usb(let udid?) = session.target, let installID = info.id {
+            if session.onUSB, let udid = session.usbUDID, let installID = info.id {
                 self.recordIdentity(installID, forUSB: udid)
             }
             self.dedupeSessions()
@@ -781,7 +794,8 @@ class DirectEngineController: ObservableObject {
         })
     }
 
-    func recordIdentity(_ installID: String, forUSB udid: String) {
+    private func recordIdentity(_ installID: String, forUSB udid: String) {
+        guard !installID.isEmpty, !udid.isEmpty else { return }
         installIDByUDID[udid] = installID
     }
 

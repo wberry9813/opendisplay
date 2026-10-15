@@ -83,6 +83,47 @@ struct EngineControllerTests {
     }
     private let devices = [UsbmuxDevice(deviceID: 987_001, udid: "task09-synthetic", name: "Fixture")]
 
+    @Test func managedWifiSessionRejectsNamesakeUSBAndKeepsVerifiedMigration() throws {
+        let suite = "task13-verified-identity-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        // The previous development cache may have been inferred from names; never trust it.
+        defaults.set(["namesake-B": "install-A"], forKey: "installIDByUDID")
+        let engine = DirectEngineController(managed: true, discover: false,
+            screenPermission: { true }, startSender: { _ in }, identityDefaults: defaults)
+        let a = UsbmuxDevice(deviceID: 987_010, udid: "verified-A", name: "Same")
+        let b = UsbmuxDevice(deviceID: 987_011, udid: "namesake-B", name: "Same")
+        engine.receivedUSBDevices([a])
+        let receiver = try #require(engine.receiverSnapshots().first?["receiverID"] as? String)
+        _ = try engine.startManagedSession(receiverID: receiver, preference: .auto)
+        let session = try #require(engine.sessions.first)
+        let hello = try JSONDecoder().decode(PhoneInfo.self, from: Data(#"{"pixelsWide":1920,"pixelsHigh":1080,"scale":2,"id":"install-A"}"#.utf8))
+        session.sender.onHello?(hello) // verified hello on A's live USB route
+        #expect((defaults.dictionary(forKey: DirectEngineController.verifiedIdentityKey) as? [String: String])?[a.udid] == "install-A")
+        // Model a live Wi-Fi continuation of A. Stop the injected sender before transport changes:
+        // this hostless policy test must not dial fake USB devices or create displays.
+        session.sender.stop()
+        session.onUSB = false
+        session.wifiServiceName = "Same"
+        engine.receivedUSBDevices([b])
+        #expect(engine.sessions.first === session && !session.onUSB)
+        #expect(session.usbUDID != b.udid)
+        #expect((defaults.dictionary(forKey: DirectEngineController.verifiedIdentityKey) as? [String: String])?[b.udid] == nil)
+        #expect(!engine.receiverSnapshots().contains {
+            ($0["receiverID"] as? String) == "install:install-A"
+                && ($0["usbUDIDs"] as? [String] ?? []).contains(b.udid)
+        })
+        let wifiHello = try JSONDecoder().decode(PhoneInfo.self, from: Data(#"{"pixelsWide":1920,"pixelsHigh":1080,"scale":2,"id":"wifi-only"}"#.utf8))
+        session.sender.onHello?(wifiHello)
+        #expect((defaults.dictionary(forKey: DirectEngineController.verifiedIdentityKey) as? [String: String])?[a.udid] == "install-A",
+                "a Wi-Fi hello cannot rewrite the historical USB route mapping")
+        session.deviceID = "install-A"
+        engine.receivedUSBDevices([a])
+        #expect(session.onUSB && session.usbUDID == a.udid)
+        #expect(engine.sessions.first === session)
+        engine.stopManagedSession()
+    }
+
     @Test func discoveryAndDirectConnectArePassiveWithoutGrant() {
         let engine = controller()
         for _ in 0..<3 {
