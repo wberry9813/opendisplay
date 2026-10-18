@@ -244,4 +244,90 @@ struct EngineControllerTests {
         engine.disconnectAll()
         #expect(engine.sessions.isEmpty)
     }
+
+    // A receiver-announced `closing` is deliberate and terminal: it ends the
+    // session AND revokes the managed grant, so a still-attached USB entry or a
+    // discovery refresh cannot silently reopen the screen.
+    @Test func receiverAnnouncedClosingIsTerminalAndRevokesGrant() async throws {
+        let engine = controller()
+        engine.receivedUSBDevices(devices)
+        let id = try #require(engine.receiverSnapshots().first?["receiverID"] as? String)
+        _ = try engine.startManagedSession(receiverID: id, preference: .usb)
+        let session = try #require(engine.sessions.first)
+        #expect(engine.managedSessionSnapshot()["state"] as? String == "connecting")
+        session.sender.onPeerClosed?()
+        #expect(engine.sessions.isEmpty)
+        #expect(engine.grant.active == nil)
+        #expect(engine.managedSessionSnapshot()["state"] as? String == "idle",
+                "a revoked grant reports idle, never connecting")
+        // Discovery and a still-present USB entry must not resurrect it, even
+        // past end()'s one-second recovery arm.
+        engine.receivedUSBDevices(devices)
+        engine.receivedBonjourResults([])
+        try await Task.sleep(for: .milliseconds(1200))
+        engine.receivedUSBDevices(devices)
+        #expect(engine.sessions.isEmpty)
+        #expect(engine.grant.active == nil)
+        #expect(engine.managedSessionSnapshot()["state"] as? String == "idle")
+    }
+
+    // A previously captured onPeerClosed belongs to a retired session; firing it
+    // after a replacement started must not kill that replacement.
+    @Test func stalePeerClosedCannotKillReplacementSession() throws {
+        let engine = controller()
+        engine.receivedUSBDevices(devices)
+        let id = try #require(engine.receiverSnapshots().first?["receiverID"] as? String)
+        _ = try engine.startManagedSession(receiverID: id, preference: .usb)
+        let stale = try #require(engine.sessions.first)
+        let staleClosed = stale.sender.onPeerClosed
+        engine.stopManagedSession()
+        _ = try engine.startManagedSession(receiverID: id, preference: .usb)
+        let replacement = try #require(engine.sessions.first)
+        staleClosed?()
+        #expect(engine.sessions.first === replacement)
+        #expect(engine.grant.active != nil)
+        engine.stopManagedSession()
+    }
+
+    // Regression: the deliberate-close path must not have changed accidental
+    // loss. An unannounced disconnect keeps the grant and recovers; a later
+    // deliberate close is still terminal.
+    @Test func accidentalLossRecoversWhileDeliberateCloseRevokesGrant() async throws {
+        let engine = controller()
+        engine.receivedUSBDevices(devices)
+        let id = try #require(engine.receiverSnapshots().first?["receiverID"] as? String)
+        _ = try engine.startManagedSession(receiverID: id, preference: .usb)
+        let grant = engine.grant.active
+        engine.sessions.first?.sender.onDisconnected?()
+        #expect(engine.sessions.isEmpty)
+        try await Task.sleep(for: .milliseconds(1200))
+        #expect(engine.sessions.count == 1)
+        #expect(engine.grant.active == grant)
+        let recovered = try #require(engine.sessions.first)
+        recovered.sender.onPeerClosed?()
+        #expect(engine.grant.active == nil)
+        #expect(engine.sessions.isEmpty)
+        #expect(engine.managedSessionSnapshot()["state"] as? String == "idle")
+        try await Task.sleep(for: .milliseconds(1200))
+        engine.receivedUSBDevices(devices)
+        engine.receivedBonjourResults([])
+        #expect(engine.sessions.isEmpty)
+        #expect(engine.grant.active == nil)
+    }
+
+    // Regression: the lock/wake path still keeps the grant and rebuilds a
+    // wake-waiting replacement session.
+    @Test func peerSleepingStillKeepsTheGrant() throws {
+        let engine = controller()
+        engine.receivedUSBDevices(devices)
+        let id = try #require(engine.receiverSnapshots().first?["receiverID"] as? String)
+        _ = try engine.startManagedSession(receiverID: id, preference: .auto)
+        let grant = engine.grant.active
+        let first = try #require(engine.sessions.first)
+        first.sender.onPeerSleeping?()
+        #expect(engine.grant.active == grant)
+        #expect(engine.sessions.count == 1)
+        #expect(engine.sessions.first !== first)
+        engine.stopManagedSession()
+    }
 }

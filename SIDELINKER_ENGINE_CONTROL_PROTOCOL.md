@@ -108,6 +108,8 @@ While a grant exists, the engine may autonomously recover or migrate the already
 
 A successful `stopSession` **revokes** the grant. After revocation, discovery, remembered-device state, Bonjour refreshes, USB attach events and stale reconnect timers must not resurrect the session.
 
+A receiver-announced `closing` (the receiver deliberately ending the session — app quit, stop listening, or a session-only disconnect) is also **terminal**: the engine revokes the grant and does not recover it, and discovery or a still-attached USB entry must not reopen the screen. Accidental link loss (an unannounced disconnect, a network drop, or the receiver's `sleeping` lock path) keeps the existing recovery of the already-authorized grant.
+
 Only a new `startSession` may authorize a new Direct session.
 
 The engine protocol does not arbitrate Native Sidecar. SideLinker product policy is responsible for granting connection intent to only one backend at a time.

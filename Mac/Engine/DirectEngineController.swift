@@ -723,12 +723,13 @@ class DirectEngineController: ObservableObject {
             session?.wired = wired
         }
         sender.onPeerClosed = { [weak self, weak session] in
-            // The receiver app quit — a deliberate goodbye, so no reconnect
-            // waits around. Reopening the app is a fresh start handled by
-            // the normal discovery/auto-connect paths.
+            // The receiver deliberately ended the session (app quit, stop
+            // listening, or a session-only disconnect). That is terminal for a
+            // managed grant: reopening is a fresh start the user must ask for,
+            // never a silent discovery/auto-connect side effect.
             guard let self, let session, self.isCurrent(session) else { return }
             Log.info("session fingerprint \(DirectIdentityDiagnostics.fingerprint(session.id)) closed by the receiver — ending")
-            self.end(session)
+            self.endDeliberately(session)
         }
         sessions.append(session)
         session.startTask = Task {
@@ -799,6 +800,20 @@ class DirectEngineController: ObservableObject {
                 self.recoverManagedSession()
             }
         }
+    }
+
+    /// A receiver-announced `closing` is DELIBERATE: the receiver chose to end
+    /// this session. It is therefore TERMINAL for a managed grant — the session
+    /// ends and any recovery is cancelled by revoking the grant (via
+    /// `stopManagedSession()`), so discovery, a still-attached USB entry or a
+    /// stale one-second recovery task cannot silently reopen the screen. A new
+    /// `startSession` is the only way back. Accidental loss keeps the existing
+    /// recovery: `onDisconnected` ends the session but leaves the grant (and its
+    /// recovery) intact, and `onPeerSleeping` explicitly rebuilds a wake-waiting
+    /// replacement.
+    private func endDeliberately(_ session: DeviceSession) {
+        if managed { stopManagedSession(); return }
+        end(session)
     }
 
     private func isCurrent(_ session: DeviceSession) -> Bool {
