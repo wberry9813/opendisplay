@@ -36,8 +36,11 @@ struct LocalControlServerTests {
         return fd
     }
 
-    private func response(_ fd: Int32, method: String) async throws -> [String: Any] {
-        let frame = try EngineControlFramer.encode(["v": 1, "kind": "request", "id": "test", "method": method])
+    private func response(_ fd: Int32, method: String,
+                          params: [String: Any]? = nil) async throws -> [String: Any] {
+        var request: [String: Any] = ["v": 1, "kind": "request", "id": "test", "method": method]
+        if let params { request["params"] = params }
+        let frame = try EngineControlFramer.encode(request)
         let sent = frame.withUnsafeBytes { Darwin.send(fd, $0.baseAddress, $0.count, 0) }
         #expect(sent == frame.count)
         var framer = EngineControlFramer()
@@ -129,5 +132,60 @@ struct LocalControlServerTests {
         let rejection = try #require(JSONSerialization.jsonObject(with: payload) as? [String: Any])
         #expect((rejection["error"] as? [String: Any])?["code"] as? String == "control.ownerExists")
         #expect(engine.grant.active == nil && engine.sessions.isEmpty)
+    }
+
+    @Test func displaySizeMethodsBridgeEngineChoices() async throws {
+        let root = URL(fileURLWithPath: "/tmp/task18-\(UUID().uuidString.prefix(8))")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false,
+                                                attributes: [.posixPermissions: 0o700])
+        defer { try? FileManager.default.removeItem(at: root) }
+        let path = root.appendingPathComponent("Direct/engine.sock").path
+        let engine = DisplaySizeEngine()
+        let server = LocalControlServer(controller: engine, path: path)
+        try server.start()
+        let client = try connectClient(path)
+        defer { server.stop(); close(client) }
+        #expect(try await response(client, method: "hello")["ok"] as? Bool == true)
+
+        let read = try await response(client, method: "getDisplaySize")
+        #expect(read["ok"] as? Bool == true)
+        let readResult = try #require(read["result"] as? [String: Any])
+        #expect(readResult["choice"] as? String == "default")
+        #expect((readResult["outcomes"] as? [[String: Any]])?.first?["choice"] as? String == "default")
+
+        let changed = try await response(client, method: "setDisplaySize",
+                                         params: ["choice": "moreSpace"])
+        #expect(changed["ok"] as? Bool == true)
+        #expect(engine.receivedChoice == .moreSpace)
+        #expect((changed["result"] as? [String: Any])?["choice"] as? String == "moreSpace")
+
+        let invalid = try await response(client, method: "setDisplaySize",
+                                         params: ["choice": "enormous"])
+        #expect((invalid["error"] as? [String: Any])?["code"] as? String == "protocol.invalidMessage")
+        #expect(engine.receivedChoice == .moreSpace)
+    }
+}
+
+@MainActor
+private final class DisplaySizeEngine: DirectEngineController {
+    var receivedChoice: DisplaySize?
+
+    init() {
+        super.init(managed: true, discover: false, startSender: { _ in })
+    }
+
+    override func managedDisplaySizeSnapshot() throws -> [String: Any] {
+        snapshot(choice: receivedChoice ?? .default)
+    }
+
+    override func setManagedDisplaySize(_ choice: DisplaySize) throws -> [String: Any] {
+        receivedChoice = choice
+        return snapshot(choice: choice)
+    }
+
+    private func snapshot(choice: DisplaySize) -> [String: Any] {
+        ["sessionID": "session", "receiverID": "install:test", "choice": choice.rawValue,
+         "outcomes": [["choice": choice.rawValue, "pointsWide": 1280, "pointsHigh": 960,
+                       "scale": 2, "sentWidth": 2560, "sentHeight": 1920]]]
     }
 }

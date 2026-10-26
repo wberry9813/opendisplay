@@ -164,6 +164,48 @@ Parameters may include the current `sessionID`.
 
 Repeated stop of an already-stopped session should succeed idempotently.
 
+### getDisplaySize
+
+No required parameters. Only valid while a managed session grant exists.
+
+Returns the engine-owned per-device display-size choice and the outcomes for every supported
+choice. The engine owns HiDPI selection, stream reconfiguration, fallback and persistence;
+SideLinker only projects these facts.
+
+```json
+{
+  "sessionID": "...",
+  "receiverID": "...",
+  "choice": "default",
+  "outcomes": [
+    {
+      "choice": "default",
+      "pointsWide": 1280,
+      "pointsHigh": 960,
+      "scale": 2,
+      "sentWidth": 2560,
+      "sentHeight": 1920
+    }
+  ]
+}
+```
+
+`choice` is one of `largerText`, `default`, `moreSpace`, `native`. `pointsWide/pointsHigh/scale`
+describe the desktop the engine would run; `sentWidth/sentHeight` describe the encoded stream.
+
+### setDisplaySize
+
+Parameters:
+
+```json
+{"choice": "moreSpace"}
+```
+
+Only valid while a managed session grant exists and the receiver has supplied its display facts.
+Returns the same snapshot as `getDisplaySize` after the engine stores the choice and schedules its
+existing in-place live resize. A successful response means the engine accepted and persisted the
+choice; it is not a claim that the receiver has already repainted the new raster.
+
 ### shutdown
 
 Requests graceful session cleanup and engine exit.
@@ -246,6 +288,7 @@ Initial error codes:
 - `session.busy`
 - `session.notFound`
 - `transport.unavailable`
+- `displaySize.unavailable`
 - `engine.internal`
 
 ## Ordering

@@ -204,6 +204,14 @@ final class LocalControlServer {
                           "capabilities": ["receiverDiscovery": true, "usb": true, "wifi": true, "extend": true, "input": true]]
             case "subscribe": subscribed = true
             case "listReceivers": result = ["receivers": controller.receiverSnapshots()]
+            case "getDisplaySize": result = try controller.managedDisplaySizeSnapshot()
+            case "setDisplaySize":
+                guard let raw = request.params["choice"] as? String,
+                      let choice = DisplaySize(rawValue: raw) else {
+                    throw EngineControlError(code: "protocol.invalidMessage",
+                                             message: "Expected a known display size choice")
+                }
+                result = try controller.setManagedDisplaySize(choice)
             case "requestAccessibility": controller.requestAccessibility()
             case "startSession":
                 guard let receiverID = request.params["receiverID"] as? String,

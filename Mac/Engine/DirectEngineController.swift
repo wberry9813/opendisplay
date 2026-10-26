@@ -91,10 +91,14 @@ final class DeviceSession: ObservableObject, Identifiable {
         refreshDisplaySize()
     }
 
-    func setDisplaySize(_ size: DisplaySize) {
-        guard let info = lastHello else { return }
+    /// Applies a size choice for this live session. Returns false until the receiver's hello
+    /// supplied the panel facts needed to build a valid plan.
+    @discardableResult
+    func setDisplaySize(_ size: DisplaySize) -> Bool {
+        guard let info = lastHello else { return false }
         sender.setDisplaySize(size, for: info)
         refreshDisplaySize()
+        return true
     }
 
     /// Also called when the picker opens: the outcomes can change without a
@@ -895,6 +899,40 @@ class DirectEngineController: ObservableObject {
             result["framesSent"] = session.framesSent
         }
         return result
+    }
+
+    /// The live per-device display-size contract for SideLinker. The engine owns the choices, the
+    /// effective plan and persistence; SideLinker only projects the facts and asks for a choice.
+    func managedDisplaySizeSnapshot() throws -> [String: Any] {
+        guard let active = grant.active else {
+            throw EngineControlError(code: "session.notFound", message: "No active Direct session")
+        }
+        return displaySizeSnapshot(active: active)
+    }
+
+    func setManagedDisplaySize(_ choice: DisplaySize) throws -> [String: Any] {
+        guard let active = grant.active, let session = sessions.first else {
+            throw EngineControlError(code: "session.notFound", message: "No active Direct session")
+        }
+        guard session.setDisplaySize(choice) else {
+            throw EngineControlError(code: "displaySize.unavailable",
+                                     message: "Receiver display facts are not available yet", retryable: true)
+        }
+        return displaySizeSnapshot(active: active)
+    }
+
+    private func displaySizeSnapshot(active: ManagedSessionGrant.Active) -> [String: Any] {
+        let session = sessions.first
+        return ["sessionID": active.sessionID, "receiverID": active.receiverID,
+                "choice": session?.displaySize.rawValue ?? DisplaySize.default.rawValue,
+                "outcomes": (session?.displaySizeOutcomes ?? []).map { outcome in
+                    ["choice": outcome.choice.rawValue,
+                     "pointsWide": outcome.desktop.pointsWide,
+                     "pointsHigh": outcome.desktop.pointsHigh,
+                     "scale": outcome.desktop.scale,
+                     "sentWidth": outcome.sent.width,
+                     "sentHeight": outcome.sent.height] as [String: Any]
+                }]
     }
 
     func permissionSnapshot() -> [String: Any] {
