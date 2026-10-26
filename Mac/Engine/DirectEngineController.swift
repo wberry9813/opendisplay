@@ -922,7 +922,9 @@ class DirectEngineController: ObservableObject {
     }
 
     private func displaySizeSnapshot(active: ManagedSessionGrant.Active) -> [String: Any] {
-        let session = sessions.first
+        // Managed mode owns at most one pipeline. If a transient state has no single pipeline,
+        // report the grant with no fabricated choices rather than reading another device's facts.
+        let session = sessions.count == 1 ? sessions.first : nil
         return ["sessionID": active.sessionID, "receiverID": active.receiverID,
                 "choice": session?.displaySize.rawValue ?? DisplaySize.default.rawValue,
                 "outcomes": (session?.displaySizeOutcomes ?? []).map { outcome in

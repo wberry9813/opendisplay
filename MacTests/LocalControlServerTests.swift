@@ -134,6 +134,12 @@ struct LocalControlServerTests {
         #expect(engine.grant.active == nil && engine.sessions.isEmpty)
     }
 
+    @Test func displaySizeRequiresActiveGrant() {
+        let engine = DirectEngineController(managed: true, discover: false)
+        #expect(throws: EngineControlError.self) { try engine.managedDisplaySizeSnapshot() }
+        #expect(throws: EngineControlError.self) { try engine.setManagedDisplaySize(.default) }
+    }
+
     @Test func displaySizeMethodsBridgeEngineChoices() async throws {
         let root = URL(fileURLWithPath: "/tmp/task18-\(UUID().uuidString.prefix(8))")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false,
