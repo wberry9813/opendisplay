@@ -136,6 +136,48 @@ No required parameters.
 
 Returns a complete receiver array.
 
+### Task20 prepared activation (development)
+
+Control major/framing remain v1. `hello.capabilities.receiverPreflight` is the integer
+`1`, not a boolean. Absence/other versions means unsupported; clients must not call
+`startSession` or media9000 as a compatibility fallback.
+
+- `prepareReceiver {receiverID, mode:"extend", transportPreference, requestContext}`:
+  idle managed owner only; fresh lowercase UUID context; one pending/prepared operation
+  per owner incarnation. Returns Engine-instance/context/probe/activation/receiver/epoch
+  binding, a fresh opaque `preparedHandle`, actual transport, explicit PV/minimum facts,
+  reported-compatible booleans and remaining `ttlMs` (at most3000). No grant or session.
+- `cancelPreparedReceiver {engineInstanceID, requestContext}`: idempotent for that
+  owner/context, replies `state:"cancelled"` only after matching holder I/O cleanup.
+  If the matching context already committed, returns `state:"committed",session:{...}`
+  with its exact sessionID/activationID, rather than claiming cancellation or stopping
+  the session. The client must use targeted `stopSession` to release that session.
+  A stale context cannot stop a replacement. Owner EOF/stop/shutdown retire pending
+  preparation before existing grant teardown. Cancelling remains busy until cleanup.
+- `activatePreparedReceiver {engineInstanceID,requestContext,preparedHandle}` consumes
+  the matching owner's prepared handle atomically before asynchronous I/O. Repeats
+  return `preflight.consumedOrUnknown`. It sends activate on the SAME prepared9002
+  socket, requires the exact ACK tuple and a byte-identical strictly validated full
+  hello before any grant/session/sender construction. Activation has a fixed3s
+  deadline. Final main-authority checks include owner/instance/context, idle grant/
+  generation, pinned route/DeviceID and permission. No second dial or9000 fallback.
+  Result is the existing managed session snapshot plus `activationID`.
+- Prepared sessions include that `activationID` in every subscribed `sessionState`,
+  including stop events. Legacy sessions omit it. The context association lasts only
+  for that active grant. Re-subscribe on the SAME control owner replays snapshots;
+  lost response never authorizes retrying activate. Idle alone is not a cancellation
+  barrier; use cancel and exactly correlate a committed result before targeted stop.
+
+Receiver preflight v1 uses separate TCP9002, exact bounded length-prefixed JSON and
+per-socket full-hello evidence. Bonjour `pf=1,pfp=9002` are locator hints, never proof.
+Network resolution uses DNSServiceResolve/GetAddrInfo without media dialing; ambiguous
+interfaces/routes fail closed. USB requires an existing unique install→attached exact
+UDID mapping and matching current DeviceID. The preflight-only cancellable usbmux
+operation owns each list/connect socket; legacy `Usbmux` media APIs/callers are unchanged.
+Prepare has a fixed5s deadline; validated proof/socket has a nonrenewable3s lease.
+No raw socket/endpoint/UDID/nonce or hello bytes cross Product IPC; no compatibility
+fact is written back to discovery. This is version observation, not peer authentication.
+
 ### startSession
 
 ```json

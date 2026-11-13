@@ -366,11 +366,56 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate {
 
     // MARK: - Lifecycle
 
+    private var preparedOrigin: PreparedMediaConnection?
+
+    /// Invoked only after the controller's strict hello/authority gate and grant.
+    /// The ticket keeps Network's ORIGINAL I/O queue alive; all callbacks trampoline
+    /// onto this sender's queue. This path never calls connect/start on the socket.
+    func startPrepared(_ prepared: PreparedMediaConnection) async throws {
+        try await adoptPreparedConnection(prepared)
+        try await startPipeline()
+    }
+
+    /// Connection-only ownership transaction, separately testable without creating
+    /// display/capture resources. The production start uses this exact transaction.
+    func adoptPreparedConnection(_ prepared: PreparedMediaConnection) async throws {
+        try Task.checkCancellation()
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            queue.async {
+                guard !self.stopped, self.connection == nil, self.preparedOrigin == nil,
+                      prepared.connection.state == .ready else {
+                    continuation.resume(throwing: CancellationError()); return
+                }
+                self.preparedOrigin = prepared
+                let conn = prepared.connection
+                self.connection = conn
+                conn.stateUpdateHandler = { [weak self, weak conn] state in
+                    self?.queue.async { [weak self] in
+                        guard let self, let conn, self.connection === conn, !self.stopped else { return }
+                        switch state {
+                        case .failed, .cancelled: self.linkDied("prepared connection ended")
+                        default: break
+                        }
+                    }
+                }
+                self.becomeReady(conn)
+                self.handleControl(prepared.proof.hello) // already strict and byte-exact
+                continuation.resume()
+            }
+        }
+    }
+
     func start() async throws {
         // Sender instances are single-use; a delayed start must never undo stop().
         try Task.checkCancellation()
         guard !stopped else { throw CancellationError() }
         queue.async { self.connect() }   // dial state lives on `queue`
+        try await startPipeline()
+    }
+
+    private func startPipeline() async throws {
+        try Task.checkCancellation()
+        guard !stopped else { throw CancellationError() }
         if !monitorsStarted {
             monitorsStarted = true
             schedulePing()
@@ -1572,10 +1617,12 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate {
         // go non-viable routinely and NW rides them out on its own, and a
         // docked Mac losing its Ethernet (undock) should fall back to WiFi,
         // not end the session.
-        conn.viabilityUpdateHandler = { [weak self] viable in
-            guard let self, self.connection === conn, !viable,
+        conn.viabilityUpdateHandler = { [weak self, weak conn] viable in
+            self?.queue.async { [weak self] in
+            guard let self, let conn, self.connection === conn, !viable,
                   self.currentPathDirectLink else { return }
             self.linkDied("path no longer viable")
+            }
         }
         receiveControl(on: conn)
         refreshDirectLinkClassification(for: conn)
@@ -2247,7 +2294,9 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate {
 
     private func receiveControl(on conn: NWConnection) {
         conn.receive(minimumIncompleteLength: 4, maximumLength: 4) { [weak self] data, _, _, error in
-            guard let self, error == nil, let data, data.count == 4 else {
+            self?.queue.async { [weak self] in
+            guard let self, self.connection === conn, !self.stopped else { return }
+            guard error == nil, let data, data.count == 4 else {
                 if let error {
                     Log.info("control receive ended: \(error)")
                     // A receive error on the live connection is fatal to it.
@@ -2257,7 +2306,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate {
                     // redial), not the link dying.
                     var isOwnCancel = false
                     if case .posix(let code) = error, code == .ECANCELED { isOwnCancel = true }
-                    if let self, self.connection === conn, !isOwnCancel {
+                    if self.connection === conn, !isOwnCancel {
                         self.linkDied("receive failed: \(error)")
                     }
                 }
@@ -2266,9 +2315,13 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate {
             let len = Int(UInt32(bigEndian: data.withUnsafeBytes { $0.loadUnaligned(as: UInt32.self) }))
             guard len > 0, len < 1 << 20 else { return }
             conn.receive(minimumIncompleteLength: len, maximumLength: len) { [weak self] payload, _, _, error in
-                guard let self, error == nil, let payload, payload.count == len else { return }
+                self?.queue.async { [weak self] in
+                guard let self, self.connection === conn, !self.stopped,
+                      error == nil, let payload, payload.count == len else { return }
                 self.handleControl(payload)
                 self.receiveControl(on: conn)
+                }
+            }
             }
         }
     }
@@ -3037,6 +3090,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate {
         frame.append(payload)
         pendingSends += 1
         connection.send(content: frame, completion: .contentProcessed { [weak self] error in
+            self?.queue.async { [weak self] in
             guard let self else { return }
             self.pendingSends -= 1
             if let error {
@@ -3053,6 +3107,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate {
                 self.bytesSent = 0
                 self.statsWindowStart = Date()
                 Task { @MainActor in self.onStats?(frames, mbps) }
+            }
             }
         })
     }

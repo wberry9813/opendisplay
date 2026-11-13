@@ -131,10 +131,15 @@ class DirectEngineController: ObservableObject {
     private var managedTargets = Set<String>()
     private var managedInstallID: String?
     private let startSender: (MacSender) async throws -> Void
+    private let startPreparedSender: (MacSender, PreparedMediaConnection) async throws -> Void
     private let screenPermission: () -> Bool
+    private let makePreflightUSB: (DispatchQueue) -> PreflightUSBIO
     private let identityDefaults: UserDefaults
     static let verifiedIdentityKey = "verifiedUSBInstallIDByUDID"
     var onEvent: ((String, [String: Any]) -> Void)?
+    private var preparation: (holder: ReceiverPreflightHolder, owner: UUID, instance: String, generation: UInt64,
+                              cancelling: Bool, consuming: Bool, preference: EngineTransportPreference, proof: PreflightWire.Proof?)?
+    private var committedPreparation: (owner: UUID, instance: String, context: String, activation: String, sessionID: String)?
 
     @Published var sessions: [DeviceSession] = []
     @Published var discovered: [NWBrowser.Result] = []
@@ -214,11 +219,15 @@ class DirectEngineController: ObservableObject {
     init(managed: Bool = false, discover: Bool = true,
          screenPermission: @escaping () -> Bool = CGPreflightScreenCaptureAccess,
          startSender: @escaping (MacSender) async throws -> Void = { try await $0.start() },
-         identityDefaults: UserDefaults = .standard) {
+         identityDefaults: UserDefaults = .standard,
+         makePreflightUSB: @escaping (DispatchQueue) -> PreflightUSBIO = { PreflightUSBSocket(queue: $0) },
+         startPreparedSender: @escaping (MacSender, PreparedMediaConnection) async throws -> Void = { try await $0.startPrepared($1) }) {
         self.managed = managed
         self.screenPermission = screenPermission
         self.startSender = startSender
+        self.startPreparedSender = startPreparedSender
         self.identityDefaults = identityDefaults
+        self.makePreflightUSB = makePreflightUSB
         self.installIDByUDID = identityDefaults.dictionary(forKey: Self.verifiedIdentityKey) as? [String: String] ?? [:]
         if managed { mode = .extend; port = "9000" }
         guard discover else { return }
@@ -253,6 +262,7 @@ class DirectEngineController: ObservableObject {
         #endif
         let detached = Set(usbDevices.map(\.udid)).subtracting(devices.map(\.udid))
         usbDevices = devices
+        retireWithdrawnPreparation(origin: "usbObservation")
         failover(detachedUDIDs: detached)
         autoConnect()
         publishSnapshots()
@@ -287,8 +297,15 @@ class DirectEngineController: ObservableObject {
     func receivedBonjourResults(_ results: [NWBrowser.Result]) {
         #if DEBUG
         diagnoseBonjour(results)
+        var fields = preparation?.holder.diagnosticFields ?? [:]
+        fields["result_set_changed"] = String(Set(discovered) != Set(results))
+        fields["old_count"] = String(discovered.count)
+        fields["new_count"] = String(results.count)
+        fields["has_preparation"] = String(preparation != nil)
+        DirectIdentityDiagnostics.event("preflight.browser-update", fields)
         #endif
         discovered = results
+        retireWithdrawnPreparation(origin: "bonjourObservation")
         endSessionsWhoseServiceVanished()
         autoConnect()
         connectNewlyCabled()
@@ -568,7 +585,7 @@ class DirectEngineController: ObservableObject {
     }
 
     func connect(to target: ConnectionTarget, userInitiated: Bool = false,
-                 awaitingWake: Bool = false) {
+                 awaitingWake: Bool = false, prepared: PreparedMediaConnection? = nil) {
         if managed {
             guard grant.active != nil, managedTargets.contains(target.sessionID) else { return }
             guard sessions.allSatisfy({ $0.id == target.sessionID }) else { return }
@@ -739,7 +756,8 @@ class DirectEngineController: ObservableObject {
         session.startTask = Task {
             guard self.isCurrent(session), !Task.isCancelled else { return }
             do {
-                try await self.startSender(sender)
+                if let prepared { try await self.startPreparedSender(sender, prepared) }
+                else { try await self.startSender(sender) }
             } catch is CancellationError {
                 // stopped by the user while waiting — nothing to report
             } catch {
@@ -893,6 +911,9 @@ class DirectEngineController: ObservableObject {
         let state = session.map { $0.failed ? "failed" : $0.lifecycle } ?? "connecting"
         var result: [String: Any] = ["sessionID": active.sessionID,
             "receiverID": active.receiverID, "state": state]
+        if let committedPreparation, committedPreparation.sessionID == active.sessionID {
+            result["activationID"] = committedPreparation.activation
+        }
         if let session {
             result["transport"] = session.onUSB ? "usb" : "wifi"
             result["status"] = String(session.status.prefix(512))
@@ -960,6 +981,8 @@ class DirectEngineController: ObservableObject {
     }
 
     func startManagedSession(receiverID: String, preference: EngineTransportPreference) throws -> [String: Any] {
+        // Legacy explicit start may win, but can never reuse a preflight proof.
+        cancelAllPreparations(reason: .legacyStart)
         guard managed else { throw EngineControlError(code: "engine.internal", message: "Not managed") }
         if let active = grant.active {
             guard active.receiverID == receiverID, active.preference == preference else {
@@ -990,17 +1013,24 @@ class DirectEngineController: ObservableObject {
     }
 
     func stopManagedSession() {
+        cancelAllPreparations(reason: .managedStop)
         let old = grant.active
+        let activation = committedPreparation?.activation
+        committedPreparation = nil
         grant.stop() // Revoke BEFORE teardown and any asynchronously queued callback.
         managedTargets.removeAll()
         managedInstallID = nil
         if let old {
             onEvent?("engineState", ["state": "stopping"])
-            onEvent?("sessionState", ["sessionID": old.sessionID, "receiverID": old.receiverID, "state": "stopping"])
+            var event: [String: Any] = ["sessionID": old.sessionID, "receiverID": old.receiverID, "state": "stopping"]
+            event["activationID"] = activation
+            onEvent?("sessionState", event)
         }
         sessions.forEach { end($0) }
         if let old {
-            onEvent?("sessionState", ["sessionID": old.sessionID, "receiverID": old.receiverID, "state": "idle"])
+            var event: [String: Any] = ["sessionID": old.sessionID, "receiverID": old.receiverID, "state": "idle"]
+            event["activationID"] = activation
+            onEvent?("sessionState", event)
         }
         publishSnapshots()
     }
@@ -1043,6 +1073,215 @@ class DirectEngineController: ObservableObject {
     }
 
     // MARK: - Device list (one row per physical device)
+
+    /// Select a locator, NOT a compatible receiver. Only the new prepare method may use it.
+    func preflightRoute(receiverID: String, preference: EngineTransportPreference) throws -> PreflightRoute {
+        guard receiverID.hasPrefix("install:"), let install = UUID(uuidString: String(receiverID.dropFirst(8))) else {
+            throw PreflightWire.failure("wrongTarget")
+        }
+        let usb = usbDevices.filter { device in
+            installIDByUDID[device.udid].flatMap(UUID.init(uuidString:)) == install
+        }
+        let network = discovered.filter { txtID(of: $0).flatMap(UUID.init(uuidString:)) == install }
+        guard usb.count <= 1, network.count <= 1 else { throw PreflightWire.failure("ambiguousRoute") }
+        if preference != .wifi, let device = usb.first { return .usb(device.udid, deviceID: device.deviceID) }
+        if preference != .usb, let result = network.first { return .network(result, wifiOnly: preference == .wifi) }
+        throw PreflightWire.failure("routeUnavailable")
+    }
+
+    private func samePreflightRoute(_ left: PreflightRoute, _ right: PreflightRoute,
+                                    pinnedInterface: NWInterface?) -> Bool {
+        switch (left, right) {
+        case (.usb(let a, let ai), .usb(let b, let bi)): return a == b && ai == bi
+        case (.network(let a, let aw), .network(let b, let bw)):
+            guard aw == bw, a.endpoint == b.endpoint,
+                  case .bonjour(let at) = a.metadata, case .bonjour(let bt) = b.metadata,
+                  at == bt else { return false }
+            // Result equality includes the aggregate interface set. An added
+            // interface does not change this socket's immutable resolver pin.
+            let original = a.interfaces.filter { !aw || $0.type == .wifi }
+            let required = pinnedInterface.map { [$0] } ?? original
+            return !required.isEmpty && required.allSatisfy { interface in
+                original.contains(interface) && b.interfaces.contains(interface)
+                    && (!bw || interface.type == .wifi)
+            }
+        default: return false
+        }
+    }
+    private func retireWithdrawnPreparation(origin: String) {
+        guard let operation = preparation else { return }
+        let preference: EngineTransportPreference
+        switch operation.holder.route {
+        case .usb: preference = .usb
+        case .network(_, let wifiOnly): preference = wifiOnly ? .wifi : .auto
+        }
+        let fresh = try? preflightRoute(receiverID: operation.holder.receiverID, preference: preference)
+        let pinnedInterface = operation.holder.pinnedNetworkInterface
+        #if DEBUG
+        var decision = operation.holder.diagnosticFields
+        decision["origin"] = origin
+        decision["fresh_route_present"] = String(fresh != nil)
+        decision["same_route"] = String(fresh.map { samePreflightRoute(operation.holder.route, $0, pinnedInterface: pinnedInterface) } ?? false)
+        decision["triggers_cancellation"] = String(fresh.map { !samePreflightRoute(operation.holder.route, $0, pinnedInterface: pinnedInterface) } ?? true)
+        decision["already_cancelling"] = String(operation.cancelling)
+        DirectIdentityDiagnostics.event("preflight.route-decision", decision)
+        #endif
+        guard let route = fresh, samePreflightRoute(operation.holder.route, route, pinnedInterface: pinnedInterface) else {
+            #if DEBUG
+            DirectIdentityDiagnostics.event("preflight.route-retired", [
+                "context_fp": DirectIdentityDiagnostics.fingerprint(operation.holder.context), "origin": origin,
+                "reason": fresh == nil ? "routeUnavailable" : "routeSnapshotChanged"])
+            if case .network(let captured, _) = operation.holder.route, case .network(let current, _) = fresh {
+                DirectIdentityDiagnostics.event("preflight.route-snapshot", [
+                    "context_fp": DirectIdentityDiagnostics.fingerprint(operation.holder.context),
+                    "same_endpoint": String(captured.endpoint == current.endpoint),
+                    "captured_interfaces": captured.interfaces.map { String($0.index) }.sorted().joined(separator: ","),
+                    "current_interfaces": current.interfaces.map { String($0.index) }.sorted().joined(separator: ","),
+                    "same_install": String(txtID(of: captured) == txtID(of: current))])
+            }
+            #endif
+            cancelAllPreparations(reason: origin == "bonjourObservation" ? .bonjourRouteWithdrawn : .usbRouteWithdrawn); return
+        }
+    }
+
+    func prepareReceiver(receiverID: String, preference: EngineTransportPreference, context: String,
+                         owner: UUID, instance: String,
+                         completion: @escaping (Result<[String: Any], EngineControlError>) -> Void) {
+        do {
+            guard managed, grant.active == nil, sessions.isEmpty, preparation == nil else { throw PreflightWire.failure("busy") }
+            guard PreflightWire.uuid(context) != nil, receiverID.hasPrefix("install:"),
+                  let id = UUID(uuidString: String(receiverID.dropFirst(8))) else { throw PreflightWire.failure("invalidMessage") }
+            let route = try preflightRoute(receiverID: receiverID, preference: preference)
+            let holder = ReceiverPreflightHolder(context: context, receiverID: receiverID,
+                install: id.uuidString.lowercased(), route: route, diagnosticGeneration: grant.generation, makeUSB: makePreflightUSB)
+            let generation = grant.generation
+            preparation = (holder, owner, instance, generation, false, false, preference, nil)
+            holder.start(completion: { [weak self, weak holder] result in
+                #if DEBUG
+                let resultCode: String
+                switch result {
+                case .success: resultCode = "success"
+                case .failure(let error): resultCode = error.code
+                }
+                DirectIdentityDiagnostics.event("preflight.controller-result", [
+                    "context_fp": DirectIdentityDiagnostics.fingerprint(context), "result": resultCode,
+                    "holder_fp": DirectIdentityDiagnostics.fingerprint(holder?.probe),
+                    "generation_fp": DirectIdentityDiagnostics.fingerprint(String(generation)),
+                    "holder_alive": String(holder != nil), "cancelling": String(self?.preparation?.cancelling == true)])
+                #endif
+                guard let self, let holder else { completion(.failure(PreflightWire.failure("cancelled"))); return }
+                guard let operation = self.preparation, !operation.cancelling, operation.holder === holder, operation.owner == owner,
+                      self.grant.active == nil, self.sessions.isEmpty, self.grant.generation == generation else {
+                    holder.cancel(reason: .prepareAuthorityInvalid) {}; completion(.failure(PreflightWire.failure("cancelled"))); return
+                }
+                switch result {
+                case .failure(let error): self.preparation = nil; completion(.failure(error))
+                case .success(let proof):
+                    self.preparation?.proof = proof
+                    let expires = (proof.validatedAt + .seconds(3)).uptimeNanoseconds
+                    let now = DispatchTime.now().uptimeNanoseconds
+                    guard now < expires else {
+                        self.preparation = nil
+                         holder.cancel(reason: .proofExpiredBeforePublish) { completion(.failure(PreflightWire.failure("expired"))) }; return
+                    }
+                    guard let fresh = try? self.preflightRoute(receiverID: receiverID, preference: preference),
+                          self.samePreflightRoute(route, fresh, pinnedInterface: holder.pinnedNetworkInterface) else {
+                        self.preparation = nil
+                        holder.cancel(reason: .proofRouteChangedBeforePublish) { completion(.failure(PreflightWire.failure("routeChanged"))) }; return
+                    }
+                    completion(.success(["engineInstanceID": instance, "requestContext": context,
+                        "probeID": holder.probe, "preparedHandle": holder.handle, "activationID": holder.activation,
+                        "receiverID": receiverID, "transport": route.transport, "receiverEpoch": proof.receiverEpoch,
+                        "receiverPV": proof.receiverPV, "receiverMin": proof.receiverMin,
+                        "enginePV": WireProtocol.version, "engineMin": WireProtocol.minSupportedPeer,
+                        "compatibilityReported": true, "compatible": true, "ttlMs": max(1, Int((expires - now) / 1_000_000))]))
+                }
+            }, onRetire: { [weak self, weak holder] in
+                guard let self, let holder, self.preparation?.holder === holder else { return }
+                self.preparation = nil
+            })
+        } catch let error as EngineControlError { completion(.failure(error)) }
+        catch { completion(.failure(PreflightWire.failure())) }
+    }
+
+    func activatePreparedReceiver(context: String, handle: String, owner: UUID, instance: String,
+                                  completion: @escaping (Result<[String: Any], EngineControlError>) -> Void) {
+        guard let operation = preparation, operation.owner == owner, operation.instance == instance,
+              operation.holder.context == context, operation.holder.handle == handle,
+              !operation.consuming, !operation.cancelling, let proof = operation.proof,
+              DispatchTime.now() < proof.validatedAt + .seconds(3),
+              grant.generation == operation.generation, grant.active == nil, sessions.isEmpty,
+              let fresh = try? preflightRoute(receiverID: operation.holder.receiverID, preference: operation.preference),
+              samePreflightRoute(operation.holder.route, fresh, pinnedInterface: operation.holder.pinnedNetworkInterface) else {
+            completion(.failure(PreflightWire.failure("consumedOrUnknown"))); return
+        }
+        preparation?.consuming = true // Main-authority atomic consume BEFORE I/O suspension.
+        operation.holder.activate { [weak self] result in
+            guard let self else { completion(.failure(PreflightWire.failure("cancelled"))); return }
+            guard let current = self.preparation, current.holder === operation.holder,
+                  current.owner == owner, current.instance == instance, !current.cancelling,
+                  current.consuming, self.grant.generation == operation.generation,
+                  self.grant.active == nil, self.sessions.isEmpty,
+                  let route = try? self.preflightRoute(receiverID: operation.holder.receiverID, preference: operation.preference),
+                  self.samePreflightRoute(operation.holder.route, route, pinnedInterface: operation.holder.pinnedNetworkInterface) else {
+                // A transferred ticket's last reference closes only its own socket.
+                completion(.failure(PreflightWire.failure("cancelled"))); return
+            }
+            self.preparation = nil
+            switch result {
+            case .failure(let error): completion(.failure(error))
+            case .success(let transferred):
+                guard DispatchTime.now() < transferred.commitDeadline,
+                      transferred.connection.state == .ready, self.screenPermission() else {
+                    completion(.failure(PreflightWire.failure("permissionOrConnectionUnavailable"))); return
+                }
+                // No suspension between final checks, grant, session construction and
+                // publication. Generic startManagedSession (route reselection/dial) is NOT used.
+                do {
+                    let active = try self.grant.start(receiverID: operation.holder.receiverID, preference: operation.preference)
+                    let target: ConnectionTarget
+                    switch route {
+                    case .usb(let udid, _): target = .usb(udid: udid)
+                    case .network(let result, _): target = .wifi(result)
+                    }
+                    self.managedTargets = [target.sessionID]
+                    // Retain existing committed-session migration eligibility on both known routes.
+                    if let entry = self.deviceEntries.first(where: { self.receiverID(for: $0) == operation.holder.receiverID }) {
+                        self.managedTargets.formUnion([entry.usbTarget, entry.wifiTarget].compactMap { $0?.sessionID })
+                    }
+                    self.managedInstallID = transferred.proof.info.id
+                    self.committedPreparation = (owner, instance, context, operation.holder.activation, active.sessionID)
+                    self.connect(to: target, prepared: transferred)
+                    self.publishSnapshots()
+                    completion(.success(self.managedSessionSnapshot()))
+                } catch let error as EngineControlError { completion(.failure(error)) }
+                catch { completion(.failure(PreflightWire.failure())) }
+            }
+        }
+    }
+
+    /// Matching cancellation is an I/O cleanup barrier OR an exactly correlated
+    /// committed snapshot. It cannot stop an unrelated/replacement session.
+    func cancelPreparedReceiver(context: String, owner: UUID, instance: String, completion: @escaping ([String: Any]) -> Void) {
+        if let committed = committedPreparation, committed.owner == owner, committed.instance == instance,
+           committed.context == context, grant.active?.sessionID == committed.sessionID {
+            completion(["state": "committed", "session": managedSessionSnapshot()]); return
+        }
+        guard let operation = preparation, operation.owner == owner, operation.instance == instance,
+              operation.holder.context == context else { completion(["state": "cancelled"]); return }
+        preparation?.cancelling = true
+        operation.holder.cancel(reason: .ownerCancelRequest) { [weak self] in
+            if self?.preparation?.holder === operation.holder { self?.preparation = nil }
+            completion(["state": "cancelled"])
+        }
+    }
+    func cancelAllPreparations(reason: PreflightCancelReason = .controllerCaller) {
+        guard let operation = preparation, !operation.cancelling else { return }
+        preparation?.cancelling = true
+        operation.holder.cancel(reason: reason) { [weak self] in
+            if self?.preparation?.holder === operation.holder { self?.preparation = nil }
+        }
+    }
 
     struct DeviceEntry: Identifiable {
         let id: String

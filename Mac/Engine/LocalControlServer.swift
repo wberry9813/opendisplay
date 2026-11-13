@@ -22,9 +22,12 @@ final class LocalControlServer {
     private var handshakeDeadline = Date.distantFuture
     private var socketInode: ino_t = 0
     private let instanceID = UUID().uuidString
+    private var ownerIncarnation = UUID()
+    private let ownerExit: (() -> Void)?
 
-    init(controller: DirectEngineController, path: String? = nil) {
+    init(controller: DirectEngineController, path: String? = nil, ownerExit: (() -> Void)? = nil) {
         self.controller = controller
+        self.ownerExit = ownerExit
         self.path = path ?? FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/Application Support/SideLinker/Direct/engine.sock").path
     }
@@ -155,6 +158,7 @@ final class LocalControlServer {
                 continue
             }
             owner = fd
+            ownerIncarnation = UUID()
             handshakeDeadline = Date().addingTimeInterval(5) // Fixed, not extended by invalid requests.
             let source = DispatchSource.makeReadSource(fileDescriptor: fd, queue: .main)
             source.setEventHandler { [weak self] in self?.readOwner() }
@@ -201,7 +205,7 @@ final class LocalControlServer {
                 handshakeDeadline = .distantFuture
                 result = ["protocolVersion": 1, "engineInstanceID": instanceID,
                           "engineVersion": Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.0.0",
-                          "capabilities": ["receiverDiscovery": true, "usb": true, "wifi": true, "extend": true, "input": true]]
+                          "capabilities": ["receiverDiscovery": true, "usb": true, "wifi": true, "extend": true, "input": true, "receiverPreflight": 1] as [String: Any]]
             case "subscribe": subscribed = true
             case "listReceivers": result = ["receivers": controller.receiverSnapshots()]
             case "getDisplaySize": result = try controller.managedDisplaySizeSnapshot()
@@ -213,6 +217,44 @@ final class LocalControlServer {
                 }
                 result = try controller.setManagedDisplaySize(choice)
             case "requestAccessibility": controller.requestAccessibility()
+            case "prepareReceiver":
+                guard let receiverID = request.params["receiverID"] as? String,
+                      request.params["mode"] as? String == "extend",
+                      let raw = request.params["transportPreference"] as? String,
+                      let preference = EngineTransportPreference(rawValue: raw),
+                      let context = PreflightWire.uuid(request.params["requestContext"]) else { throw PreflightWire.failure() }
+                let incarnation = ownerIncarnation
+                controller.prepareReceiver(receiverID: receiverID, preference: preference, context: context,
+                    owner: incarnation, instance: instanceID) { [weak self] result in
+                    guard let self, !self.exiting, self.owner >= 0, self.ownerIncarnation == incarnation else { return }
+                    switch result {
+                    case .success(let object): self.send(["v": 1, "kind": "response", "id": request.id, "ok": true, "result": object])
+                    case .failure(let error): self.sendError(id: request.id, error: error)
+                    }
+                }
+                return // Never block control reads while resolve/dial/reply is pending.
+            case "cancelPreparedReceiver":
+                guard request.params["engineInstanceID"] as? String == instanceID,
+                      let context = PreflightWire.uuid(request.params["requestContext"]) else { throw PreflightWire.failure() }
+                let incarnation = ownerIncarnation
+                controller.cancelPreparedReceiver(context: context, owner: incarnation, instance: instanceID) { [weak self] barrier in
+                    guard let self, !self.exiting, self.owner >= 0, self.ownerIncarnation == incarnation else { return }
+                    self.send(["v": 1, "kind": "response", "id": request.id, "ok": true, "result": barrier])
+                }
+                return
+            case "activatePreparedReceiver":
+                guard request.params["engineInstanceID"] as? String == instanceID,
+                      let context = PreflightWire.uuid(request.params["requestContext"]),
+                      let handle = PreflightWire.uuid(request.params["preparedHandle"]) else { throw PreflightWire.failure() }
+                let incarnation = ownerIncarnation
+                controller.activatePreparedReceiver(context: context, handle: handle, owner: incarnation, instance: instanceID) { [weak self] result in
+                    guard let self, !self.exiting, self.owner >= 0, self.ownerIncarnation == incarnation else { return }
+                    switch result {
+                    case .success(let snapshot): self.send(["v": 1, "kind": "response", "id": request.id, "ok": true, "result": snapshot])
+                    case .failure(let error): self.sendError(id: request.id, error: error)
+                    }
+                }
+                return
             case "startSession":
                 guard let receiverID = request.params["receiverID"] as? String,
                       !receiverID.isEmpty, request.params["mode"] as? String == "extend",
@@ -290,7 +332,10 @@ final class LocalControlServer {
     private func finish() {
         guard !exiting else { return }
         exiting = true
+        ownerIncarnation = UUID()
+        controller.cancelAllPreparations(reason: .controlOwnerFinish)
         controller.stopManagedSession()
+        if let ownerExit { stop(); ownerExit(); return }
         // Brief bounded response drain; no sender/session remains authorized during it.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
             self?.stop()
@@ -300,6 +345,8 @@ final class LocalControlServer {
     }
 
     func stop() {
+        ownerIncarnation = UUID()
+        controller.cancelAllPreparations(reason: .controlServerStop)
         controller.onEvent = nil
         controller.stopManagedSession()
         heartbeat?.invalidate(); heartbeat = nil
