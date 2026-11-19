@@ -320,7 +320,7 @@ class DirectEngineController: ObservableObject {
     }
 
     private func txtID(of result: NWBrowser.Result) -> String? {
-        if case .bonjour(let txt) = result.metadata { return txt["id"] }
+        if case .bonjour(let txt) = result.metadata { return ReceiverSnapshot.installID(txt["id"]) }
         return nil
     }
 
@@ -347,7 +347,7 @@ class DirectEngineController: ObservableObject {
         return sessions.first { s in
             guard !s.failed, case .wifi(let result) = s.target else { return false }
             if let id = installIDByUDID[device.udid], let peer = s.deviceID ?? txtID(of: result) {
-                return peer == id
+                return ReceiverSnapshot.sameDevice(serviceInstallID: peer, usbInstallID: id)
             }
             if managed { return false }
             return serviceName(of: result) != nil && device.name == serviceName(of: result)
@@ -363,7 +363,7 @@ class DirectEngineController: ObservableObject {
         }
         return sessions.first { s in
             guard !s.failed, case .usb(let udid) = s.target else { return false }
-            if let id = txtID(of: result), s.deviceID == id { return true }
+            if ReceiverSnapshot.sameDevice(serviceInstallID: txtID(of: result), usbInstallID: s.deviceID) { return true }
             if let udid, let device = usbDevices.first(where: { $0.udid == udid }),
                sameDevice(result, device) { return true }
             if managed { return false }
@@ -450,7 +450,7 @@ class DirectEngineController: ObservableObject {
         let id = txtID(of: result)
         return sessions.contains { s in
             guard !s.failed else { return false }
-            if let id, s.deviceID == id { return true }
+            if ReceiverSnapshot.sameDevice(serviceInstallID: id, usbInstallID: s.deviceID) { return true }
             return s.wired && s.deviceKind == "Mac"
         }
     }
@@ -463,8 +463,8 @@ class DirectEngineController: ObservableObject {
         if managed {
             let advertised: String?
             if case .wifi(let result) = session.target { advertised = txtID(of: result) } else { advertised = nil }
-            guard let verified = installIDByUDID[device.udid],
-                  verified == (session.deviceID ?? advertised) else { return }
+            guard ReceiverSnapshot.sameDevice(serviceInstallID: session.deviceID ?? advertised,
+                   usbInstallID: installIDByUDID[device.udid]) else { return }
         }
         Log.info("cable attached for route fingerprint \(DirectIdentityDiagnostics.fingerprint(session.id)) — migrating to USB")
         session.onUSB = true
@@ -513,7 +513,7 @@ class DirectEngineController: ObservableObject {
     private func wifiService(for session: DeviceSession) -> NWBrowser.Result? {
         discovered.first { result in
             if let id = txtID(of: result), let deviceID = session.deviceID {
-                return id == deviceID
+                return ReceiverSnapshot.sameDevice(serviceInstallID: id, usbInstallID: deviceID)
             }
             if managed { return false }
             let name = serviceName(of: result)
@@ -529,7 +529,7 @@ class DirectEngineController: ObservableObject {
         // Failed sessions hold no pipeline: a USB corpse must never win the
         // "keep the cable" rule against a working WiFi session.
         let usbSessionIDs = Set(sessions.compactMap { s -> String? in
-            if case .usb = s.target, !s.failed { return s.deviceID }
+            if case .usb = s.target, !s.failed { return ReceiverSnapshot.installID(s.deviceID) }
             return nil
         })
         let cabledNames = Set(usbDevices.compactMap { device -> String? in
@@ -538,9 +538,9 @@ class DirectEngineController: ObservableObject {
         })
         for s in sessions {
             guard case .wifi(let result) = s.target else { continue }
-            let duplicate = (s.deviceID.map { usbSessionIDs.contains($0) } ?? false)
+            let duplicate = (ReceiverSnapshot.installID(s.deviceID).map { usbSessionIDs.contains($0) } ?? false)
                 || (txtID(of: result).map { usbSessionIDs.contains($0) } ?? false)
-                || (serviceName(of: result).map { cabledNames.contains($0) } ?? false)
+                || (!managed && (serviceName(of: result).map { cabledNames.contains($0) } ?? false))
             if duplicate {
                 Log.info("two sessions for one device — keeping the cable, dropping route fingerprint \(DirectIdentityDiagnostics.fingerprint(s.id))")
                 end(s)
@@ -862,7 +862,7 @@ class DirectEngineController: ObservableObject {
             let receiver = receiverID(for: entry)
             if receiver.hasPrefix("install:") {
                 let install = String(receiver.dropFirst(8))
-                for (udid, knownInstall) in installIDByUDID where knownInstall == install { udids.insert(udid) }
+                for (udid, knownInstall) in installIDByUDID where ReceiverSnapshot.installID(knownInstall) == install { udids.insert(udid) }
             }
             row["usbUDIDs"] = udids.sorted()
             if let version = live?.protocolVersion {
@@ -887,7 +887,7 @@ class DirectEngineController: ObservableObject {
     }
 
     private func recordIdentity(_ installID: String, forUSB udid: String) {
-        guard !installID.isEmpty, !udid.isEmpty else { return }
+        guard let installID = ReceiverSnapshot.installID(installID), !udid.isEmpty else { return }
         installIDByUDID[udid] = installID
         #if DEBUG
         DirectIdentityDiagnostics.event("helper.verified-usb-hello", ["udid_fp": DirectIdentityDiagnostics.fingerprint(udid),
@@ -896,7 +896,7 @@ class DirectEngineController: ObservableObject {
     }
 
     private func receiverID(for entry: DeviceEntry) -> String {
-        if case .usb(let udid?) = entry.usbTarget, let id = installIDByUDID[udid] {
+        if case .usb(let udid?) = entry.usbTarget, let id = ReceiverSnapshot.installID(installIDByUDID[udid]) {
             return "install:\(id)"
         }
         if case .wifi(let result) = entry.wifiTarget, let id = txtID(of: result) {
@@ -981,6 +981,7 @@ class DirectEngineController: ObservableObject {
     }
 
     func startManagedSession(receiverID: String, preference: EngineTransportPreference) throws -> [String: Any] {
+        let receiverID = ReceiverSnapshot.receiverID(receiverID)
         // Legacy explicit start may win, but can never reuse a preflight proof.
         cancelAllPreparations(reason: .legacyStart)
         guard managed else { throw EngineControlError(code: "engine.internal", message: "Not managed") }
@@ -990,7 +991,8 @@ class DirectEngineController: ObservableObject {
             }
             return managedSessionSnapshot()
         }
-        guard let entry = deviceEntries.first(where: { self.receiverID(for: $0) == receiverID }) else {
+        let matches = deviceEntries.filter { self.receiverID(for: $0) == receiverID }
+        guard matches.count == 1, let entry = matches.first else {
             throw EngineControlError(code: "receiver.notFound", message: "Receiver not currently discovered", retryable: true)
         }
         let target: ConnectionTarget?
@@ -1047,7 +1049,7 @@ class DirectEngineController: ObservableObject {
         // Only rediscovery of the granted identity may replace an ended pipeline.
         guard let entry = deviceEntries.first(where: { entry in
             receiverID(for: entry) == active.receiverID
-                || managedInstallID.map { receiverID(for: entry) == "install:\($0)" } == true
+                || ReceiverSnapshot.installID(managedInstallID).map { receiverID(for: entry) == "install:\($0)" } == true
         }) else { return }
         let target: ConnectionTarget?
         switch active.preference {

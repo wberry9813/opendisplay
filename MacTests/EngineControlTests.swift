@@ -1,4 +1,5 @@
 import Foundation
+import Network
 import Testing
 
 struct EngineControlTests {
@@ -66,7 +67,7 @@ struct EngineControlTests {
 
     @Test func installIdentityDedupeNotNameDedupe() {
         #expect(!ReceiverSnapshot.sameDevice(serviceInstallID: "1", usbInstallID: "2"))
-        #expect(ReceiverSnapshot.sameDevice(serviceInstallID: "1", usbInstallID: "1"))
+        #expect(!ReceiverSnapshot.sameDevice(serviceInstallID: "1", usbInstallID: "1"), "unknown identities fail closed")
         #expect(!ReceiverSnapshot.sameDevice(serviceInstallID: nil, usbInstallID: nil))
         #expect(!ReceiverSnapshot.sameDevice(serviceInstallID: "1", usbInstallID: nil))
         let rows: [[String: Any]] = [
@@ -83,6 +84,70 @@ struct EngineControlTests {
 
 @MainActor
 struct EngineControllerTests {
+    @Test(arguments: [false, true])
+    func canonicalHelloKeepsOneConnectableInstall(lowercaseFirst: Bool) async throws {
+        let suite = "stage-f-identity-\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let install = "ab000000-0000-4000-8000-000000000001"
+        let device = UsbmuxDevice(deviceID: 987_101, udid: "stage-f-usb", name: "Same")
+        let engine = DirectEngineController(managed: true, discover: false,
+            screenPermission: { true }, startSender: { _ in }, identityDefaults: defaults)
+        let queue = DispatchQueue(label: "stage-f-bonjour")
+        let advertisement = try NWListener(using: .tcp, on: .any)
+        let name = "StageF-\(UUID())"
+        var txt = NWTXTRecord(); txt["id"] = install.uppercased()
+        advertisement.service = NWListener.Service(name: name, type: "_sldirect._tcp", domain: nil, txtRecord: txt)
+        advertisement.newConnectionHandler = { $0.cancel() }
+        let browser = NWBrowser(for: .bonjourWithTXTRecord(type: "_sldirect._tcp", domain: nil), using: .tcp)
+        advertisement.start(queue: queue); browser.start(queue: queue)
+        defer { browser.cancel(); advertisement.cancel() }
+        var located: NWBrowser.Result?
+        for _ in 0..<100 {
+            located = browser.browseResults.first { result in
+                if case .service(let found, _, _, _) = result.endpoint { return found == name }; return false
+            }
+            if located != nil { break }
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        let service = try #require(located, "own Bonjour fixture must be observable")
+        engine.receivedUSBDevices([device])
+        _ = try engine.startManagedSession(receiverID: "device:\(device.udid)", preference: .usb)
+        let session = try #require(engine.sessions.first)
+        for id in lowercaseFirst ? [install, install.uppercased()] : [install.uppercased(), install] {
+            let data = try JSONSerialization.data(withJSONObject: ["pixelsWide": 1920, "pixelsHigh": 1080, "scale": 2, "id": id])
+            session.sender.onHello?(try JSONDecoder().decode(PhoneInfo.self, from: data))
+            engine.receivedBonjourResults([service])
+            #expect(engine.receiverSnapshots().count == 1)
+            #expect(engine.receiverSnapshots().first?["receiverID"] as? String == "install:\(install)")
+            #expect(engine.receiverSnapshots().first?["transports"] as? [String] == ["usb", "wifi"])
+            #expect(ReceiverSnapshot.sameDevice(serviceInstallID: install.uppercased(), usbInstallID: id))
+            _ = try engine.preflightRoute(receiverID: "install:\(id)", preference: .usb)
+        }
+        engine.stopManagedSession()
+        engine.receivedBonjourResults([])
+        engine.receivedUSBDevices([])
+        engine.receivedUSBDevices([device])
+        engine.receivedBonjourResults([service])
+        #expect(engine.receiverSnapshots().count == 1)
+        _ = try engine.startManagedSession(receiverID: "install:\(install.uppercased())", preference: .usb)
+        #expect(engine.sessions.count == 1)
+        engine.stopManagedSession()
+        #expect(!ReceiverSnapshot.sameDevice(serviceInstallID: UUID().uuidString, usbInstallID: install))
+        #expect(!ReceiverSnapshot.sameDevice(serviceInstallID: "unknown", usbInstallID: "unknown"))
+        // Two actual USB routes claiming the same install are not made connectable by grouping.
+        let other = UsbmuxDevice(deviceID: 987_102, udid: "stage-f-other", name: "Same")
+        engine.receivedUSBDevices([other])
+        _ = try engine.startManagedSession(receiverID: "device:\(other.udid)", preference: .usb)
+        let duplicate = try #require(engine.sessions.first)
+        let data = try JSONSerialization.data(withJSONObject: ["pixelsWide": 1920, "pixelsHigh": 1080, "scale": 2, "id": install])
+        duplicate.sender.onHello?(try JSONDecoder().decode(PhoneInfo.self, from: data))
+        engine.stopManagedSession()
+        engine.receivedUSBDevices([device, other])
+        #expect(throws: EngineControlError.self) { try engine.preflightRoute(receiverID: "install:\(install)", preference: .usb) }
+        #expect(throws: EngineControlError.self) { try engine.startManagedSession(receiverID: "install:\(install)", preference: .usb) }
+    }
+
     private func controller() -> DirectEngineController {
         DirectEngineController(managed: true, discover: false,
                                screenPermission: { true }, startSender: { _ in })
@@ -103,9 +168,10 @@ struct EngineControllerTests {
         let receiver = try #require(engine.receiverSnapshots().first?["receiverID"] as? String)
         _ = try engine.startManagedSession(receiverID: receiver, preference: .auto)
         let session = try #require(engine.sessions.first)
-        let hello = try JSONDecoder().decode(PhoneInfo.self, from: Data(#"{"pixelsWide":1920,"pixelsHigh":1080,"scale":2,"id":"install-A"}"#.utf8))
+        let install = "ab000000-0000-4000-8000-000000000001"
+        let hello = try JSONDecoder().decode(PhoneInfo.self, from: Data("{\"pixelsWide\":1920,\"pixelsHigh\":1080,\"scale\":2,\"id\":\"\(install.uppercased())\"}".utf8))
         session.sender.onHello?(hello) // verified hello on A's live USB route
-        #expect((defaults.dictionary(forKey: DirectEngineController.verifiedIdentityKey) as? [String: String])?[a.udid] == "install-A")
+        #expect((defaults.dictionary(forKey: DirectEngineController.verifiedIdentityKey) as? [String: String])?[a.udid] == install)
         // Model a live Wi-Fi continuation of A. Stop the injected sender before transport changes:
         // this hostless policy test must not dial fake USB devices or create displays.
         session.sender.stop()
@@ -116,14 +182,14 @@ struct EngineControllerTests {
         #expect(session.usbUDID != b.udid)
         #expect((defaults.dictionary(forKey: DirectEngineController.verifiedIdentityKey) as? [String: String])?[b.udid] == nil)
         #expect(!engine.receiverSnapshots().contains {
-            ($0["receiverID"] as? String) == "install:install-A"
+            ($0["receiverID"] as? String) == "install:\(install)"
                 && ($0["usbUDIDs"] as? [String] ?? []).contains(b.udid)
         })
         let wifiHello = try JSONDecoder().decode(PhoneInfo.self, from: Data(#"{"pixelsWide":1920,"pixelsHigh":1080,"scale":2,"id":"wifi-only"}"#.utf8))
         session.sender.onHello?(wifiHello)
-        #expect((defaults.dictionary(forKey: DirectEngineController.verifiedIdentityKey) as? [String: String])?[a.udid] == "install-A",
+        #expect((defaults.dictionary(forKey: DirectEngineController.verifiedIdentityKey) as? [String: String])?[a.udid] == install,
                 "a Wi-Fi hello cannot rewrite the historical USB route mapping")
-        session.deviceID = "install-A"
+        session.deviceID = install
         engine.receivedUSBDevices([a])
         #expect(session.onUSB && session.usbUDID == a.udid)
         #expect(engine.sessions.first === session)

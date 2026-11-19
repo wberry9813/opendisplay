@@ -1,8 +1,18 @@
 import Foundation
 
 enum ReceiverSnapshot {
+    /// UUID spelling is not identity. Do not case-fold arbitrary/unknown identifiers.
+    static func installID(_ value: String?) -> String? {
+        value.flatMap(UUID.init(uuidString:))?.uuidString.lowercased()
+    }
+
+    static func receiverID(_ value: String) -> String {
+        guard value.hasPrefix("install:"), let id = installID(String(value.dropFirst(8))) else { return value }
+        return "install:\(id)"
+    }
+
     static func sameDevice(serviceInstallID: String?, usbInstallID: String?) -> Bool {
-        if let serviceInstallID, let usbInstallID { return serviceInstallID == usbInstallID }
+        if let service = installID(serviceInstallID), let usb = installID(usbInstallID) { return service == usb }
         // Name equality cannot establish physical identity (two iPads may share a name).
         return false
     }
@@ -11,7 +21,10 @@ enum ReceiverSnapshot {
     static func deduplicate(_ rows: [[String: Any]]) -> [[String: Any]] {
         var merged: [String: [String: Any]] = [:]
         for row in rows {
-            guard let id = row["receiverID"] as? String else { continue }
+            guard let raw = row["receiverID"] as? String else { continue }
+            let id = receiverID(raw)
+            var row = row
+            row["receiverID"] = id
             if var existing = merged[id] {
                 let transports = Set(existing["transports"] as? [String] ?? [])
                     .union(row["transports"] as? [String] ?? [])
